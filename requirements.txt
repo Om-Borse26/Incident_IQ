@@ -3,3 +3,14 @@ uvicorn==0.34.3
 groq==0.28.0
 python-dotenv==1.1.0
 pydantic-settings==2.9.1
+
+# RAG / Vector store
+langchain==0.3.25
+langchain-community==0.3.24
+langchain-huggingface==0.1.2
+sentence-transformers==3.4.1
+# lancedb uses Rust (maturin) so pre-built py3.14 wheels are available;
+# chromadb was dropped because chroma-hnswlib (C++) has no py3.14 wheel.
+lancedb
+# zstandard 0.25+ ships a py3.14 Windows wheel; older versions require MSVC to compile
+zstandard==0.25.0
