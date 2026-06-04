@@ -17,8 +17,28 @@ results during debugging.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+# Tell huggingface_hub to skip all network checks and load from local cache.
+# The embedding model (all-MiniLM-L6-v2) is downloaded once during `ingest.py`
+# and cached in ~/.cache/huggingface/. The retrieval path never needs to
+# re-download it, so every HEAD request to huggingface.co is pure overhead.
+# Using setdefault() means an explicit HF_HUB_OFFLINE=0 in .env can still
+# override this if you ever need to force a model refresh.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
+# Silence chromadb 0.6.3's broken posthog telemetry.
+# Background: posthog changed its capture() API signature; chromadb calls it
+# with the OLD positional-arg signature, which raises TypeError on every request.
+# chromadb catches that exception and prints "Failed to send telemetry event ..."
+# The env-var flags (ANONYMIZED_TELEMETRY / CHROMA_ANONYMIZED_TELEMETRY) are
+# checked AFTER the telemetry object is constructed, so they don't help here.
+# Patching posthog.capture with a no-op lambda before chromadb is imported is
+# the only reliable fix without downgrading chromadb or posthog.
+import posthog as _posthog
+_posthog.capture = lambda *args, **kwargs: None  # type: ignore[assignment]
 
 import chromadb
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -78,7 +98,12 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
 def _get_collection() -> chromadb.Collection:
     global _collection
     if _collection is None:
-        client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+        # anonymized_telemetry=False silences the broken posthog integration
+        # in chromadb 0.6.3 ("capture() takes 1 positional argument but 3 were given")
+        client = chromadb.PersistentClient(
+            path=str(CHROMA_DIR),
+            settings=chromadb.Settings(anonymized_telemetry=False),
+        )
         _collection = client.get_collection(COLLECTION_NAME)
     return _collection
 
