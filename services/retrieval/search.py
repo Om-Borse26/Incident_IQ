@@ -1,0 +1,153 @@
+"""
+Retrieval service — Phase 1, Step 2 (Vector RAG).
+
+Responsibility: given a natural-language query, return the k most
+semantically relevant incident chunks from the ChromaDB collection.
+
+This module is RETRIEVAL ONLY — it knows nothing about LLMs or prompt
+construction. That separation is deliberate:
+  R (retrieve)  -- this file
+  A (augment)   -- app/main.py builds the system prompt from these results
+  G (generate)  -- app/llm/client.py calls the LLM
+
+Keeping them apart lets you unit-test retrieval independently, swap the
+vector store without touching the API layer, and inspect intermediate
+results during debugging.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+import chromadb
+from langchain_huggingface import HuggingFaceEmbeddings
+
+# ---------------------------------------------------------------------------
+# Configuration — must mirror ingest.py exactly
+# ---------------------------------------------------------------------------
+
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CHROMA_DIR = _PROJECT_ROOT / "chroma_db"
+COLLECTION_NAME = "incidents"
+
+# WHY THE SAME MODEL AS INGESTION:
+#   Embedding models map text into a high-dimensional vector space where
+#   semantically similar phrases end up close together. The geometry of that
+#   space — which directions mean "database error" vs "timeout" — is entirely
+#   defined by the specific model weights used during training.
+#
+#   If you embed documents with model A and query with model B, the two sets
+#   of vectors live in DIFFERENT spaces. Cosine similarity between them is
+#   then meaningless: two chunks about the exact same topic will appear far
+#   apart, and retrieval will return garbage results.
+#
+#   Rule: query embedding model == document embedding model. Always.
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+# ---------------------------------------------------------------------------
+# Result type
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SearchResult:
+    """A single retrieved chunk with its provenance."""
+    text: str                   # raw chunk text (injected verbatim into the LLM prompt)
+    source: str                 # filename, e.g. "checkout-service-db-pool-exhaustion.md"
+    incident_title: str         # H1 heading from the source file
+    service: str                # affected service name
+    distance: float             # cosine distance (lower == more similar)
+
+
+# ---------------------------------------------------------------------------
+# Module-level singletons (loaded once on first call, reused on every request)
+# ---------------------------------------------------------------------------
+
+_embeddings: HuggingFaceEmbeddings | None = None
+_collection: chromadb.Collection | None = None
+
+
+def _get_embeddings() -> HuggingFaceEmbeddings:
+    global _embeddings
+    if _embeddings is None:
+        _embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    return _embeddings
+
+
+def _get_collection() -> chromadb.Collection:
+    global _collection
+    if _collection is None:
+        client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+        _collection = client.get_collection(COLLECTION_NAME)
+    return _collection
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def search_incidents(query: str, k: int = 4) -> list[SearchResult]:
+    """
+    Return the k most relevant incident chunks for the given query.
+
+    Parameters
+    ----------
+    query : str
+        The user's natural-language question or symptom description.
+    k : int, default 4
+        Number of chunks to retrieve.
+
+        HOW k IS CHOSEN:
+        - Too small (k=1-2): risks missing relevant context, especially when
+          a single incident spans multiple chunks and the crucial detail sits
+          in chunk 2 or 3.
+        - Too large (k=8+): floods the LLM prompt with loosely related context,
+          increasing cost, latency, and the chance the model gets distracted
+          by noise and hallucinates a blend of multiple incidents.
+        - k=4 is the practical sweet spot for short incident documents:
+          it covers the typical 2-3 chunks a single incident produces while
+          still leaving room for a second incident if the query spans topics.
+          Tune upward if your documents are longer or more fragmented.
+
+    Returns
+    -------
+    list[SearchResult]
+        Ordered by similarity (most relevant first). Each item includes the
+        chunk text, source filename, incident title, and affected service so
+        the caller can build a grounded, traceable LLM prompt.
+    """
+    if not query or not query.strip():
+        raise ValueError("query must be a non-empty string")
+
+    # 1. Embed the query — same model as ingestion (see module docstring above)
+    embedder = _get_embeddings()
+    query_vector = embedder.embed_query(query)
+
+    # 2. Similarity search against the ChromaDB collection
+    collection = _get_collection()
+    raw = collection.query(
+        query_embeddings=[query_vector],
+        n_results=min(k, collection.count()),   # guard: can't request more than stored
+        include=["documents", "metadatas", "distances"],
+    )
+
+    # 3. Flatten Chroma's nested lists into clean SearchResult objects
+    results: list[SearchResult] = []
+    docs = raw["documents"][0]       # list of chunk texts
+    metas = raw["metadatas"][0]      # list of metadata dicts
+    dists = raw["distances"][0]      # list of cosine distances
+
+    for text, meta, dist in zip(docs, metas, dists):
+        results.append(
+            SearchResult(
+                text=text,
+                source=meta.get("source", "unknown"),
+                incident_title=meta.get("incident_title", "unknown"),
+                service=meta.get("service", "unknown"),
+                distance=round(dist, 4),
+            )
+        )
+
+    return results
