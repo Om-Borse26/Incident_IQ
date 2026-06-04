@@ -1,0 +1,58 @@
+[
+  {
+    "id": "C1",
+    "query": "Why was the checkout service returning 500 errors?",
+    "expected_source": "checkout-service-db-pool-exhaustion.md",
+    "should_answer": true,
+    "note": "Direct match — DB connection pool exhaustion incident"
+  },
+  {
+    "id": "C2",
+    "query": "How was the Redis OOM incident on the auth service resolved?",
+    "expected_source": "user-auth-redis-oom.md",
+    "should_answer": true,
+    "note": "Direct match — user auth Redis out-of-memory incident"
+  },
+  {
+    "id": "C3",
+    "query": "What caused the API gateway to return mass 502 errors?",
+    "expected_source": "api-gateway-502-health-check-misconfiguration.md",
+    "should_answer": true,
+    "note": "Direct match — health check misconfiguration caused 502s"
+  },
+  {
+    "id": "C4",
+    "query": "Which service had cascading timeouts related to the payment system?",
+    "expected_source": "payment-gateway-cascading-timeouts.md",
+    "should_answer": true,
+    "note": "Direct match — payment gateway cascading timeouts"
+  },
+  {
+    "id": "C5",
+    "query": "What symptoms indicated the notification service was degraded?",
+    "expected_source": "notification-service-queue-backlog.md",
+    "should_answer": true,
+    "note": "Direct match — queue backlog in notification service"
+  },
+  {
+    "id": "C6",
+    "query": "What were the resolution steps for the database pool issue?",
+    "expected_source": "checkout-service-db-pool-exhaustion.md",
+    "should_answer": true,
+    "note": "Indirect phrasing — asks for resolution, not symptoms"
+  },
+  {
+    "id": "C7",
+    "query": "How do I configure Kubernetes horizontal pod autoscaling for a Django app?",
+    "expected_source": null,
+    "should_answer": false,
+    "note": "Off-topic — Kubernetes HPA config not in any incident report"
+  },
+  {
+    "id": "C8",
+    "query": "What is the capital of France and how does it affect our SLA?",
+    "expected_source": null,
+    "should_answer": false,
+    "note": "Nonsense / off-topic — should trigger the I-don't-know fallback"
+  }
+]
