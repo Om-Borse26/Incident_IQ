@@ -9,8 +9,4 @@ langchain==0.3.25
 langchain-community==0.3.24
 langchain-huggingface==0.1.2
 sentence-transformers==3.4.1
-# lancedb uses Rust (maturin) so pre-built py3.14 wheels are available;
-# chromadb was dropped because chroma-hnswlib (C++) has no py3.14 wheel.
-lancedb
-# zstandard 0.25+ ships a py3.14 Windows wheel; older versions require MSVC to compile
-zstandard==0.25.0
+chromadb==0.6.3
