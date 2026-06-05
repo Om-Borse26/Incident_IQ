@@ -4,9 +4,11 @@ groq==0.28.0
 python-dotenv==1.1.0
 pydantic-settings==2.9.1
 
-# RAG / Vector store
+# LLM providers (via LangChain)
 langchain==0.3.25
 langchain-community==0.3.24
 langchain-huggingface==0.1.2
+langchain-groq==0.3.8
+langchain-google-genai==2.1.12
 sentence-transformers==3.4.1
 chromadb==0.6.3

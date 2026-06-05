@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from app.llm.client import ask_llm, LLMError
-from services.retrieval.search import search_incidents
+from app.llm.client import ask_llm, LLMError, LLMAllProvidersFailed
+from services.retrieval.search import search_incidents, SearchResult
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="IncidentIQ")
 
@@ -26,7 +30,8 @@ class IncidentSearchRequest(BaseModel):
 
 class IncidentSearchResponse(BaseModel):
     answer: str
-    sources: list[str]  # incident titles + filenames so the caller can verify provenance
+    sources: list[str]  # incident titles + filenames for traceability
+    degraded: bool = False  # True when all LLM providers failed; raw chunks returned
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +48,8 @@ async def ask(body: AskRequest) -> AskResponse:
     """Send a question to the configured LLM and return its answer."""
     try:
         answer = ask_llm(prompt=body.question)
+    except LLMAllProvidersFailed as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
     except LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
     except ValueError as exc:
@@ -53,12 +60,19 @@ async def ask(body: AskRequest) -> AskResponse:
 @app.post("/incident/search", response_model=IncidentSearchResponse)
 async def incident_search(body: IncidentSearchRequest) -> IncidentSearchResponse:
     """
-    RAG endpoint — Retrieve, Augment, Generate.
+    RAG endpoint — Retrieve, Augment, Generate with graceful degradation.
 
     Steps (kept deliberately separate so each is visible and testable):
-      R — search_incidents()  embeds the query, fetches top-k chunks from Chroma
-      A — build_rag_prompt()  below assembles the grounded system prompt
-      G — ask_llm()           calls the LLM with the augmented prompt
+      R — search_incidents()        embed query, fetch top-k chunks from Chroma
+      A — _build_rag_system_prompt() assemble the grounded system prompt
+      G — ask_llm()                 call the LLM with the augmented prompt
+
+    Graceful degradation:
+      If ALL LLM providers are exhausted (LLMAllProvidersFailed), we do NOT
+      return a 500. Instead we return the retrieved chunks directly so the
+      on-call engineer still sees the relevant incident records, even without
+      AI synthesis. degraded=True signals the client that the answer field is
+      a fallback message, not an LLM-generated synthesis.
     """
     # ------------------------------------------------------------------ R
     try:
@@ -71,31 +85,66 @@ async def incident_search(body: IncidentSearchRequest) -> IncidentSearchResponse
     # ------------------------------------------------------------------ A
     system_prompt = _build_rag_system_prompt(chunks)
 
-    # ------------------------------------------------------------------ G
+    # ------------------------------------------------------------------ G  (with graceful degradation)
     try:
         answer = ask_llm(prompt=body.query, system=system_prompt)
+
+        # Normal path — de-duplicate sources and return
+        sources = _format_sources(chunks, include_text=False)
+        return IncidentSearchResponse(answer=answer, sources=sources, degraded=False)
+
+    except LLMAllProvidersFailed:
+        # Degraded path — all LLM providers are down / exhausted.
+        # Return the raw retrieved chunks so the engineer is never left empty-handed.
+        logger.warning(
+            "[incident/search] All LLM providers failed for query '%s'. "
+            "Returning degraded response with raw retrieved chunks.",
+            body.query,
+        )
+        sources = _format_sources(chunks, include_text=True)  # include chunk text in degraded mode
+        return IncidentSearchResponse(
+            answer=(
+                "AI synthesis unavailable (all providers exhausted). "
+                "Showing the most relevant incident records directly:"
+            ),
+            sources=sources,
+            degraded=True,
+        )
+
     except LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    except ValueError as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
 
-    # Build the sources list: "INC-XXXX: Title  (filename.md)"
-    sources = [
-        f"{chunk.incident_title}  ({chunk.source})"
-        for chunk in chunks
-    ]
-    # De-duplicate: the same incident can appear in multiple chunks
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _format_sources(chunks: list[SearchResult], include_text: bool) -> list[str]:
+    """
+    Build the sources list, de-duplicated by incident title.
+
+    include_text=False  →  "INC-XXXX: Title  (filename.md)"
+    include_text=True   →  adds the raw chunk text below the header
+                           (used in degraded mode so engineers see full context)
+    """
     seen: set[str] = set()
-    unique_sources = [s for s in sources if not (s in seen or seen.add(s))]
+    result: list[str] = []
 
-    return IncidentSearchResponse(answer=answer, sources=unique_sources)
+    for chunk in chunks:
+        header = f"{chunk.incident_title}  ({chunk.source})"
+        if header in seen:
+            continue
+        seen.add(header)
+
+        if include_text:
+            result.append(f"{header}\n\n{chunk.text}")
+        else:
+            result.append(header)
+
+    return result
 
 
-# ---------------------------------------------------------------------------
-# Prompt builder — the Augmentation step
-# ---------------------------------------------------------------------------
-
-def _build_rag_system_prompt(chunks) -> str:
+def _build_rag_system_prompt(chunks: list[SearchResult]) -> str:
     """
     Build a grounded system prompt from retrieved chunks.
 
@@ -113,7 +162,6 @@ def _build_rag_system_prompt(chunks) -> str:
     4. Context is ordered by relevance (Chroma returns nearest-first) so the
        most pertinent chunk appears at the top of the context window.
     """
-    # Format each chunk with its provenance header so the LLM can cite it
     context_blocks = []
     for i, chunk in enumerate(chunks, start=1):
         context_blocks.append(

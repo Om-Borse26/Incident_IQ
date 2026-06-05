@@ -17,9 +17,15 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
-    # LLM routing
+    # LLM routing — kept for single-provider mode backward compat,
+    # but ask_llm() now uses LLM_FALLBACK_ORDER for the chain.
     # ------------------------------------------------------------------
     LLM_PROVIDER: str = "groq"
+
+    # Ordered, comma-separated provider list tried left-to-right.
+    # If a provider's API key is missing it is silently skipped.
+    # Example: "groq,gemini"  or  "gemini,groq"
+    LLM_FALLBACK_ORDER: str = "groq,gemini"
 
     # ------------------------------------------------------------------
     # Groq
@@ -28,14 +34,27 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
     # ------------------------------------------------------------------
+    # Google Gemini
+    # ------------------------------------------------------------------
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+
+    # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
     @model_validator(mode="after")
     def _validate_provider_secrets(self) -> "Settings":
-        if self.LLM_PROVIDER == "groq" and not self.GROQ_API_KEY:
+        providers = [p.strip().lower() for p in self.LLM_FALLBACK_ORDER.split(",")]
+
+        # At least one provider in the chain must have a key configured
+        has_groq = "groq" in providers and bool(self.GROQ_API_KEY)
+        has_gemini = "gemini" in providers and bool(self.GEMINI_API_KEY)
+
+        if not has_groq and not has_gemini:
             raise ValueError(
-                "GROQ_API_KEY is required when LLM_PROVIDER='groq'. "
-                "Set it in your .env file or as an environment variable."
+                "No usable LLM provider found. "
+                "Set GROQ_API_KEY and/or GEMINI_API_KEY in your .env file. "
+                f"LLM_FALLBACK_ORDER is currently: '{self.LLM_FALLBACK_ORDER}'"
             )
         return self
 
