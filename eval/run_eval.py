@@ -129,7 +129,7 @@ def _judge_relevance(query: str, answer: str) -> bool:
 # Per-case evaluation
 # ---------------------------------------------------------------------------
 
-def evaluate_case(case: dict) -> dict:
+def evaluate_case(case: dict, k: int = K) -> dict:
     """Run all metrics for a single test case and return a result dict."""
     query = case["query"]
     expected_source: str | None = case["expected_source"]
@@ -151,7 +151,7 @@ def evaluate_case(case: dict) -> dict:
     }
 
     # ------------------------------------------------------------------ R
-    chunks = search_incidents(query, k=K)
+    chunks = search_incidents(query, k=k)
     retrieved_sources = [c.source for c in chunks]
     result["retrieved_sources"] = "; ".join(dict.fromkeys(retrieved_sources))
 

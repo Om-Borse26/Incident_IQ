@@ -37,7 +37,7 @@ class LLMError(Exception):
 # ---------------------------------------------------------------------------
 
 def _ask_groq(prompt: str, system: str | None) -> str:
-    """Call the Groq Chat Completions API."""
+    """Call the Groq Chat Completions API with retry on 429 rate-limits."""
     try:
         from groq import Groq  # lazy import — only needed for this provider
     except ImportError as exc:
@@ -46,24 +46,48 @@ def _ask_groq(prompt: str, system: str | None) -> str:
             "Run: pip install groq"
         ) from exc
 
-    try:
-        client = Groq(api_key=settings.GROQ_API_KEY)
+    import re
+    import time
 
-        messages: list[dict] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
+    client = Groq(api_key=settings.GROQ_API_KEY)
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
 
-        response = client.chat.completions.create(
-            model=settings.GROQ_MODEL,
-            messages=messages,
-        )
-        return response.choices[0].message.content
+    max_retries = 6
+    backoff = 10  # seconds to wait on first 429; doubles each retry up to 120s
 
-    except LLMError:
-        raise  # already wrapped
-    except Exception as exc:
-        raise LLMError(f"Groq API error: {exc}") from exc
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=messages,
+            )
+            return response.choices[0].message.content
+
+        except Exception as exc:
+            msg = str(exc)
+            is_rate_limit = "429" in msg or "rate_limit_exceeded" in msg
+
+            if not is_rate_limit or attempt == max_retries - 1:
+                raise LLMError(f"Groq API error: {exc}") from exc
+
+            # Try to parse the suggested wait time from the Groq error body
+            # e.g. "Please try again in 2m11.328s"
+            wait = backoff
+            m = re.search(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)s", msg)
+            if m:
+                minutes = int(m.group(1) or 0)
+                seconds = float(m.group(2) or 0)
+                wait = max(int(minutes * 60 + seconds) + 2, wait)
+
+            print(
+                f"    [rate-limit] 429 on attempt {attempt+1}/{max_retries}. "
+                f"Waiting {wait}s before retry..."
+            )
+            time.sleep(wait)
+            backoff = min(backoff * 2, 120)
 
 
 # ---------------------------------------------------------------------------
