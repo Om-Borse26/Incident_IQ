@@ -47,7 +47,8 @@ class AnalyzeResponse(BaseModel):
     sources: list[str]
     reasoning: str
     suggested_fixes: list[str]
-    diagnostic_ran: bool
+    diagnostics_available: bool
+    degraded: bool
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -89,7 +90,7 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
         query_text = f"{body.context}\n\nQuestion: {body.query}"
         
     try:
-        result_dict = agent.run(query_text)
+        result_dict = await agent.run(query_text)
         return AnalyzeResponse(**result_dict)
     except Exception as exc:
         logger.exception("[incident/analyze] Agent completely failed")
@@ -106,7 +107,8 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
                 sources=sources,
                 reasoning=f"Agent exception: {exc}",
                 suggested_fixes=[],
-                diagnostic_ran=False
+                diagnostics_available=False,
+                degraded=True
             )
         except Exception as fallback_exc:
             raise HTTPException(status_code=500, detail=f"Agent failed, and fallback failed: {fallback_exc}")
