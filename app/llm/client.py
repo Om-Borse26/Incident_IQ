@@ -84,7 +84,11 @@ def _ask_groq(prompt: str, system: str | None) -> str:
     except ImportError as exc:
         raise LLMError("langchain-groq not installed. Run: pip install langchain-groq") from exc
 
-    llm = ChatGroq(model=settings.GROQ_MODEL, api_key=settings.GROQ_API_KEY)
+    llm = ChatGroq(
+        model=settings.GROQ_MODEL,
+        api_key=settings.GROQ_API_KEY,
+        max_retries=0,  # disable LangChain's built-in retry — our loop below handles it
+    )
 
     messages = []
     if system:
@@ -141,6 +145,7 @@ def _ask_gemini(prompt: str, system: str | None) -> str:
     llm = ChatGoogleGenerativeAI(
         model=settings.GEMINI_MODEL,
         google_api_key=settings.GEMINI_API_KEY,
+        max_retries=0,  # fail fast so the fallback chain in ask_llm() can move on
     )
 
     messages = []

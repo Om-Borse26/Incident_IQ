@@ -59,6 +59,7 @@ from textwrap import shorten
 from app.llm.client import ask_llm
 from app.main import _build_rag_system_prompt
 from services.retrieval.search import search_incidents
+from services.retrieval.tree_search import tree_search
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -129,7 +130,7 @@ def _judge_relevance(query: str, answer: str) -> bool:
 # Per-case evaluation
 # ---------------------------------------------------------------------------
 
-def evaluate_case(case: dict, k: int = K) -> dict:
+def evaluate_case(case: dict, k: int = K, method: str = "vector") -> dict:
     """Run all metrics for a single test case and return a result dict."""
     query = case["query"]
     expected_source: str | None = case["expected_source"]
@@ -137,6 +138,7 @@ def evaluate_case(case: dict, k: int = K) -> dict:
 
     result: dict = {
         "id": case["id"],
+        "method": method,
         "query": query,
         "should_answer": should_answer,
         "expected_source": expected_source or "—",
@@ -151,8 +153,42 @@ def evaluate_case(case: dict, k: int = K) -> dict:
     }
 
     # ------------------------------------------------------------------ R
-    chunks = search_incidents(query, k=k)
-    retrieved_sources = [c.source for c in chunks]
+    if method == "vector":
+        chunks = search_incidents(query, k=k)
+        retrieved_sources = [c.source for c in chunks]
+        context_text_for_judge = "\n\n".join(c.text for c in chunks)
+        system_prompt = _build_rag_system_prompt(chunks)
+    else:
+        nodes = tree_search(query)
+        retrieved_sources = [n.source_file for n in nodes]
+        context_text_for_judge = "\n\n".join(n.section_text for n in nodes)
+        
+        # Build prompt identical to vectorless endpoint
+        context_blocks = []
+        for i, node in enumerate(nodes, start=1):
+            context_blocks.append(
+                f"--- Context {i} ---\n"
+                f"Source file : {node.source_file}\n"
+                f"Incident    : {node.incident_title}\n"
+                f"Section     : {node.section_heading}\n\n"
+                f"{node.section_text}"
+            )
+        context_text = "\n\n".join(context_blocks)
+        system_prompt = (
+            "You are IncidentIQ, an expert SRE assistant. "
+            "Your job is to help engineers diagnose and resolve production incidents.\n\n"
+            "STRICT RULES — follow these without exception:\n"
+            "1. Answer ONLY using the incident context provided below. "
+            "Do NOT use any knowledge from your training data that is not reflected in the context.\n"
+            "2. When you state a fact, cite the source file it comes from "
+            "(e.g., 'According to checkout-service-db-pool-exhaustion.md ...').\n"
+            "3. If the answer to the question is NOT present in the context, "
+            "respond with exactly: \"I don't have enough information in the provided incident "
+            "reports to answer this question.\"\n"
+            "4. Do not speculate, infer, or extrapolate beyond what the context explicitly states.\n\n"
+            f"INCIDENT CONTEXT:\n\n{context_text}"
+        )
+
     result["retrieved_sources"] = "; ".join(dict.fromkeys(retrieved_sources))
 
     # CONTEXT PRECISION — code-based, no LLM involved
@@ -169,7 +205,6 @@ def evaluate_case(case: dict, k: int = K) -> dict:
 
     # ------------------------------------------------------------------ A + G
     t0 = time.perf_counter()
-    system_prompt = _build_rag_system_prompt(chunks)
     answer = ask_llm(prompt=query, system=system_prompt)
     latency_ms = round((time.perf_counter() - t0) * 1000)
 
@@ -177,7 +212,11 @@ def evaluate_case(case: dict, k: int = K) -> dict:
     result["answer_snippet"] = shorten(answer, width=80, placeholder="...")
 
     # FAITHFULNESS — LLM judge
-    result["faithful"] = int(_judge_faithfulness(answer, chunks))
+    # (Mock chunks objects for the judge to extract .text)
+    class _MockChunk:
+        def __init__(self, t): self.text = t
+    mock_chunks = [_MockChunk(context_text_for_judge)]
+    result["faithful"] = int(_judge_faithfulness(answer, mock_chunks))
 
     # ANSWER RELEVANCE — LLM judge
     result["relevant"] = int(_judge_relevance(query, answer))
@@ -250,13 +289,14 @@ def print_table(results: list[dict]) -> None:
     print()
 
 
-def save_csv(results: list[dict]) -> None:
+def save_csv(results: list[dict], method: str) -> None:
     fields = [
-        "id", "query", "should_answer", "expected_source",
+        "id", "method", "query", "should_answer", "expected_source",
         "context_precision", "faithful", "relevant", "idk_correct",
         "latency_ms", "retrieved_sources", "answer_snippet",
     ]
-    with RESULTS_PATH.open("w", newline="", encoding="utf-8") as f:
+    path = RESULTS_PATH.with_name(f"results_{method}.csv")
+    with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(results)
@@ -268,22 +308,35 @@ def save_csv(results: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--method", choices=["vector", "vectorless"], default="vector")
+    parser.add_argument("--cases", help="Comma-separated list of case IDs to run (e.g. C3,C5)")
+    args = parser.parse_args()
 
-    print(f"\nRunning RAG eval on {len(dataset)} cases (k={K}) ...")
+    dataset = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
+    
+    if args.cases:
+        subset = [c.strip() for c in args.cases.split(",")]
+        dataset = [c for c in dataset if c["id"] in subset]
+
+    print(f"\nRunning RAG eval ({args.method} mode) on {len(dataset)} cases ...")
     print("Each case: Retrieve -> Judge faithfulness -> Judge relevance\n")
 
     results = []
     for i, case in enumerate(dataset, 1):
         print(f"  [{i}/{len(dataset)}] {case['id']}: {shorten(case['query'], 60, placeholder='...')}")
         try:
-            result = evaluate_case(case)
+            result = evaluate_case(case, method=args.method)
             results.append(result)
         except Exception as exc:
             print(f"    ERROR: {exc}")
+        
+        # Stay safe with Gemini quotas
+        time.sleep(12)
 
     print_table(results)
-    save_csv(results)
+    save_csv(results, args.method)
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.llm.client import ask_llm, LLMError, LLMAllProvidersFailed
 from services.retrieval.search import search_incidents, SearchResult
+from services.retrieval.tree_search import tree_search, TreeSearchResult
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,48 @@ async def incident_search(body: IncidentSearchRequest) -> IncidentSearchResponse
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@app.post("/incident/search_vectorless", response_model=IncidentSearchResponse)
+async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSearchResponse:
+    """
+    RAG endpoint (Vectorless) — Uses the LLM to structurally route to correct
+    sections instead of using vector embeddings.
+    """
+    # ------------------------------------------------------------------ R
+    try:
+        nodes = tree_search(query=body.query)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Retrieval error: {exc}")
+
+    # ------------------------------------------------------------------ A
+    system_prompt = _build_rag_system_prompt_vectorless(nodes)
+
+    # ------------------------------------------------------------------ G
+    try:
+        answer = ask_llm(prompt=body.query, system=system_prompt)
+
+        sources = _format_sources_vectorless(nodes, include_text=False)
+        return IncidentSearchResponse(answer=answer, sources=sources, degraded=False)
+
+    except LLMAllProvidersFailed:
+        logger.warning(
+            "[incident/search_vectorless] All LLM providers failed for query '%s'. "
+            "Returning degraded response.",
+            body.query,
+        )
+        sources = _format_sources_vectorless(nodes, include_text=True)
+        return IncidentSearchResponse(
+            answer=(
+                "AI synthesis unavailable (all providers exhausted). "
+                "Showing the most relevant incident records directly:"
+            ),
+            sources=sources,
+            degraded=True,
+        )
+
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -138,6 +181,24 @@ def _format_sources(chunks: list[SearchResult], include_text: bool) -> list[str]
 
         if include_text:
             result.append(f"{header}\n\n{chunk.text}")
+        else:
+            result.append(header)
+
+    return result
+
+
+def _format_sources_vectorless(nodes: list[TreeSearchResult], include_text: bool) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+
+    for node in nodes:
+        header = f"{node.incident_title} - {node.section_heading}  ({node.source_file})"
+        if header in seen:
+            continue
+        seen.add(header)
+
+        if include_text:
+            result.append(f"{header}\n\n{node.section_text}")
         else:
             result.append(header)
 
@@ -171,6 +232,35 @@ def _build_rag_system_prompt(chunks: list[SearchResult]) -> str:
             f"Service     : {chunk.service}\n"
             f"Relevance   : distance={chunk.distance}\n\n"
             f"{chunk.text}"
+        )
+
+    context_text = "\n\n".join(context_blocks)
+
+    return (
+        "You are IncidentIQ, an expert SRE assistant. "
+        "Your job is to help engineers diagnose and resolve production incidents.\n\n"
+        "STRICT RULES — follow these without exception:\n"
+        "1. Answer ONLY using the incident context provided below. "
+        "Do NOT use any knowledge from your training data that is not reflected in the context.\n"
+        "2. When you state a fact, cite the source file it comes from "
+        "(e.g., 'According to checkout-service-db-pool-exhaustion.md ...').\n"
+        "3. If the answer to the question is NOT present in the context, "
+        "respond with exactly: \"I don't have enough information in the provided incident "
+        "reports to answer this question.\"\n"
+        "4. Do not speculate, infer, or extrapolate beyond what the context explicitly states.\n\n"
+        f"INCIDENT CONTEXT:\n\n{context_text}"
+    )
+
+
+def _build_rag_system_prompt_vectorless(nodes: list[TreeSearchResult]) -> str:
+    context_blocks = []
+    for i, node in enumerate(nodes, start=1):
+        context_blocks.append(
+            f"--- Context {i} ---\n"
+            f"Source file : {node.source_file}\n"
+            f"Incident    : {node.incident_title}\n"
+            f"Section     : {node.section_heading}\n\n"
+            f"{node.section_text}"
         )
 
     context_text = "\n\n".join(context_blocks)

@@ -1,0 +1,317 @@
+[
+  {
+    "node_id": "api-gateway-502-health-check-misconfiguration-sec0",
+    "incident_title": "INC-0082: API Gateway Mass 502 Errors from Upstream Health Check Misconfiguration",
+    "service": "api-gateway, product-catalog-service",
+    "source_file": "api-gateway-502-health-check-misconfiguration.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0082: API Gateway Mass 502 Errors from Upstream Health Check Misconfiguration Affected Service: api gateway, product catalog service Severity: P2 ...",
+    "section_text": "# INC-0082: API Gateway Mass 502 Errors from Upstream Health Check Misconfiguration\n\n**Affected Service:** api-gateway, product-catalog-service  \n**Severity:** P2  \n**Date:** 2025-02-27  \n**Duration:** 34 minutes (16:12 – 16:46 UTC)  \n**Author:** Platform Infrastructure\n\n---"
+  },
+  {
+    "node_id": "api-gateway-502-health-check-misconfiguration-sec1",
+    "incident_title": "INC-0082: API Gateway Mass 502 Errors from Upstream Health Check Misconfiguration",
+    "service": "api-gateway, product-catalog-service",
+    "source_file": "api-gateway-502-health-check-misconfiguration.md",
+    "section_heading": "Symptoms",
+    "section_summary": "API gateway began returning HTTP 502 Bad Gateway to ~35% of requests at 16:12 UTC. Affected endpoints: /api/v1/products/ , /api/v1/search/ — all route...",
+    "section_text": "- API gateway began returning HTTP 502 Bad Gateway to ~35% of requests at 16:12 UTC.\n- Affected endpoints: `/api/v1/products/*`, `/api/v1/search/*` — all routes backed by `product-catalog-service`.\n- `user-auth-service`, `checkout-service`, and `payment-service` routes unaffected.\n- Gateway access logs showed upstream target group returning `connection refused` on port 8080.\n- `product-catalog-service` pods were running and healthy per Kubernetes pod status."
+  },
+  {
+    "node_id": "api-gateway-502-health-check-misconfiguration-sec2",
+    "incident_title": "INC-0082: API Gateway Mass 502 Errors from Upstream Health Check Misconfiguration",
+    "service": "api-gateway, product-catalog-service",
+    "source_file": "api-gateway-502-health-check-misconfiguration.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A routine Terraform apply at 16:09 UTC updated the ALB target group health check path from /actuator/health to /health as part of a platform wide stan...",
+    "section_text": "A routine Terraform apply at 16:09 UTC updated the ALB target group health check path from `/actuator/health` to `/health` as part of a platform-wide standardization. However, `product-catalog-service` had not yet migrated its health endpoint to `/health` — it still only exposed `/actuator/health`.\n\nThe ALB's health check interval was 30 seconds with a threshold of 2 consecutive failures. Within 60 seconds of the Terraform apply, all three `product-catalog-service` targets were marked **unhealthy** and deregistered from the target group. The gateway had no healthy upstream to route to, producing 502s.\n\nThe service itself was completely healthy — Kubernetes probes used `exec` commands (not HTTP) so the service continued running normally, unaware of the ALB health check failure."
+  },
+  {
+    "node_id": "api-gateway-502-health-check-misconfiguration-sec3",
+    "incident_title": "INC-0082: API Gateway Mass 502 Errors from Upstream Health Check Misconfiguration",
+    "service": "api-gateway, product-catalog-service",
+    "source_file": "api-gateway-502-health-check-misconfiguration.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Immediate mitigation (t+9 min): Identified the misconfigured health check path via aws elbv2 describe target health . Applied a targeted Terraform ...",
+    "section_text": "1. **Immediate mitigation (t+9 min):** Identified the misconfigured health check path via `aws elbv2 describe-target-health`. Applied a targeted Terraform override to revert the health check path back to `/actuator/health` for `product-catalog-service` only.\n2. **Targets re-registered (t+22 min):** After two consecutive successful health checks (60s), targets re-registered; 502 rate dropped to 0%.\n3. **Full recovery (t+34 min):** Confirmed sustained 0% error rate across all `/api/v1/products/*` endpoints.\n4. **Follow-up:** `product-catalog-service` added `/health` endpoint mapping to `/actuator/health` (a simple alias) to support the new standard."
+  },
+  {
+    "node_id": "api-gateway-502-health-check-misconfiguration-sec4",
+    "incident_title": "INC-0082: API Gateway Mass 502 Errors from Upstream Health Check Misconfiguration",
+    "service": "api-gateway, product-catalog-service",
+    "source_file": "api-gateway-502-health-check-misconfiguration.md",
+    "section_heading": "Prevention",
+    "section_summary": "Add a pre flight check to the Terraform CI pipeline that validates ALB health check paths against running service endpoint inventory before applying. ...",
+    "section_text": "- Add a pre-flight check to the Terraform CI pipeline that validates ALB health check paths against running service endpoint inventory before applying.\n- Enforce the `/health` standard in the service template repository; block new service scaffolding that doesn't include it.\n- Create a canary health-check test in the smoke-test suite that verifies ALB target group health after every infrastructure deployment.\n- Add a 5-minute grace period after Terraform applies before any automated load-balancer draining."
+  },
+  {
+    "node_id": "checkout-service-db-pool-exhaustion-sec0",
+    "incident_title": "INC-0041: Checkout Service 500s from DB Connection Pool Exhaustion",
+    "service": "checkout-service",
+    "source_file": "checkout-service-db-pool-exhaustion.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0041: Checkout Service 500s from DB Connection Pool Exhaustion Affected Service: checkout service Severity: P1 Date: 2024 11 14 Duration: 47 minut...",
+    "section_text": "# INC-0041: Checkout Service 500s from DB Connection Pool Exhaustion\n\n**Affected Service:** checkout-service  \n**Severity:** P1  \n**Date:** 2024-11-14  \n**Duration:** 47 minutes (14:23 – 15:10 UTC)  \n**Author:** Platform Engineering\n\n---"
+  },
+  {
+    "node_id": "checkout-service-db-pool-exhaustion-sec1",
+    "incident_title": "INC-0041: Checkout Service 500s from DB Connection Pool Exhaustion",
+    "service": "checkout-service",
+    "source_file": "checkout-service-db-pool-exhaustion.md",
+    "section_heading": "Symptoms",
+    "section_summary": "checkout service began returning HTTP 500 errors to 68% of requests at 14:23 UTC. Error message in logs: HikariPool 1 Connection is not available, req...",
+    "section_text": "- `checkout-service` began returning HTTP 500 errors to 68% of requests at 14:23 UTC.\n- Error message in logs: `HikariPool-1 - Connection is not available, request timed out after 30000ms`.\n- Latency on `POST /orders` spiked from p99=120ms to p99=28s within 3 minutes.\n- Downstream `payment-service` reported elevated error rates due to missing order confirmations.\n- Alerting fired on: `checkout_http_5xx_rate > 5%` and `checkout_db_pool_wait_ms > 5000`."
+  },
+  {
+    "node_id": "checkout-service-db-pool-exhaustion-sec2",
+    "incident_title": "INC-0041: Checkout Service 500s from DB Connection Pool Exhaustion",
+    "service": "checkout-service",
+    "source_file": "checkout-service-db-pool-exhaustion.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A Black Friday promotional campaign launched at 14:20 UTC, increasing order throughput by 4.2x (baseline: ~800 req/min → peak: ~3,360 req/min). The Hi...",
+    "section_text": "A Black Friday promotional campaign launched at 14:20 UTC, increasing order throughput by 4.2x (baseline: ~800 req/min → peak: ~3,360 req/min).\n\nThe HikariCP connection pool for the `orders` PostgreSQL database was configured with `maximumPoolSize=20`, which was sized for 1,200 req/min. Each order creation held a connection for ~85ms on average, meaning the pool could theoretically sustain ~235 req/s. The spike far exceeded this ceiling.\n\nConnections queued up, exhausted the 30-second timeout, and threads began throwing `SQLTransientConnectionException`, which the service mapped to a generic 500.\n\nA secondary factor: a long-running analytics query from the reporting service was holding 3 connections for >10 minutes (a missing index caused a full table scan on `orders`). This reduced effective pool capacity from 20 to 17 during the incident."
+  },
+  {
+    "node_id": "checkout-service-db-pool-exhaustion-sec3",
+    "incident_title": "INC-0041: Checkout Service 500s from DB Connection Pool Exhaustion",
+    "service": "checkout-service",
+    "source_file": "checkout-service-db-pool-exhaustion.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Immediate mitigation (t+8 min): Restarted reporting service to kill the long running analytics connections, freeing 3 pool slots. Error rate droppe...",
+    "section_text": "1. **Immediate mitigation (t+8 min):** Restarted `reporting-service` to kill the long-running analytics connections, freeing 3 pool slots. Error rate dropped to ~40%.\n2. **Short-term fix (t+19 min):** Applied a live config change via Kubernetes ConfigMap to increase `HIKARI_MAX_POOL_SIZE` from 20 to 60 and rolled the deployment. Error rate dropped to <1%.\n3. **RDS scaling (t+31 min):** Scaled the PostgreSQL RDS instance from `db.r6g.large` (2 vCPU) to `db.r6g.xlarge` (4 vCPU) to handle the additional connections without CPU saturation.\n4. **Validate:** Confirmed `checkout_db_pool_wait_ms` returned to <5ms and error rate to <0.1% by 15:10 UTC."
+  },
+  {
+    "node_id": "checkout-service-db-pool-exhaustion-sec4",
+    "incident_title": "INC-0041: Checkout Service 500s from DB Connection Pool Exhaustion",
+    "service": "checkout-service",
+    "source_file": "checkout-service-db-pool-exhaustion.md",
+    "section_heading": "Prevention",
+    "section_summary": "Add a missing index on orders.created at for the reporting query (ticket: ENG 2204). Pre scale DB pool size 2 hours before known traffic events using ...",
+    "section_text": "- Add a missing index on `orders.created_at` for the reporting query (ticket: ENG-2204).\n- Pre-scale DB pool size 2 hours before known traffic events using the launch calendar.\n- Implement a read-replica for analytics queries to isolate OLAP traffic from OLTP.\n- Set `connectionTimeout` to 3s (not 30s) and surface a proper 503 + retry-after header to callers instead of a misleading 500."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec0",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0094: Notification Service Queue Backlog from Dead Letter Queue Misconfiguration Affected Service: notification service Severity: P2 Date: 2025 03...",
+    "section_text": "# INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration\n\n**Affected Service:** notification-service  \n**Severity:** P2  \n**Date:** 2025-03-11  \n**Duration:** 2 hours 51 minutes (10:33 – 13:24 UTC)  \n**Author:** Messaging Infrastructure\n\n---"
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec1",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.md",
+    "section_heading": "Symptoms",
+    "section_summary": "At 10:33 UTC, users stopped receiving order confirmation emails and push notifications. notification service logs showed zero errors — the service app...",
+    "section_text": "- At 10:33 UTC, users stopped receiving order confirmation emails and push notifications.\n- `notification-service` logs showed zero errors — the service appeared healthy.\n- SQS queue depth for `notification-jobs-prod` began climbing at ~1,800 messages/minute.\n- By 11:00 UTC the queue depth was 48,000 messages; by 13:00 UTC it was 218,000.\n- Dashboards showed `notification_messages_consumed` metric flat at 0 for the affected period.\n- All notification-service pods showed CPU < 5% and memory nominal — no signs of a crash."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec2",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A deployment at 10:28 UTC introduced a new EmailTemplateService dependency via constructor injection. The dependency's bean initialisation failed sile...",
+    "section_text": "A deployment at 10:28 UTC introduced a new `EmailTemplateService` dependency via constructor injection. The dependency's bean initialisation failed silently: a missing Handlebars template file (`order_confirmation_v3.hbs`) caused the `ApplicationContext` to partially start — all beans unrelated to `EmailTemplateService` initialized correctly, including the health check endpoint.\n\nThe SQS consumer listener (`@SqsListener`) uses Spring's `SimpleMessageListenerContainer`, which starts only after full `ApplicationContext` refresh. Because the refresh never completed (no exception was thrown — the missing template caused a lazy-initialisation path), the listener never started. Messages accumulated in the queue unconsumed.\n\nThe service returned 200 on `/actuator/health` because the health check bean had already initialized before the failure point, masking the broken state entirely.\n\nThe dead-letter queue (DLQ) was not triggered because messages were never consumed, not consumed-and-failed — they simply sat in the main queue."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec3",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Root cause identified (t+41 min): Noticed notification messages consumed=0 despite healthy pods. SSH'd into a pod and checked ApplicationContext lo...",
+    "section_text": "1. **Root cause identified (t+41 min):** Noticed `notification_messages_consumed=0` despite healthy pods. SSH'd into a pod and checked `ApplicationContext` logs — found `Caused by: FileNotFoundException: order_confirmation_v3.hbs not found`.\n2. **Immediate mitigation (t+58 min):** Rolled back the deployment to the previous image tag. Consumer listeners started within 30 seconds of rollback; queue depth began draining.\n3. **Queue drain (t+58 min – t+171 min):** Scaled `notification-service` from 3 to 12 pods to drain the 218,000-message backlog. Drain rate: ~2,200 messages/minute. Backlog cleared by 13:24 UTC.\n4. **Template file restored (same day):** Added missing `order_confirmation_v3.hbs` to the resource bundle and re-deployed successfully at 15:00 UTC."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec4",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.md",
+    "section_heading": "Prevention",
+    "section_summary": "Add startup probe (not just liveness probe) that verifies ApplicationContext is fully refreshed and all listeners are active before marking the pod re...",
+    "section_text": "- Add startup probe (not just liveness probe) that verifies `ApplicationContext` is fully refreshed and all listeners are active before marking the pod ready.\n- Add an integration test that starts the Spring ApplicationContext in a test container and asserts the SQS listener is registered.\n- Create a CloudWatch alarm on `notification_messages_consumed = 0 for 5 minutes when queue_depth > 100` to catch silent consumer failures earlier (estimated MTTD reduction: 41 min → <8 min).\n- Review all `@Lazy` and partially-initialized beans for silent failure modes; enforce fail-fast startup with `spring.main.lazy-initialization=false`."
+  },
+  {
+    "node_id": "payment-gateway-cascading-timeouts-sec0",
+    "incident_title": "INC-0055: Payment Gateway Cascading Timeout Failures",
+    "service": "payment-service, order-service",
+    "source_file": "payment-gateway-cascading-timeouts.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0055: Payment Gateway Cascading Timeout Failures Affected Service: payment service, order service Severity: P1 Date: 2024 12 03 Duration: 1 hour 1...",
+    "section_text": "# INC-0055: Payment Gateway Cascading Timeout Failures\n\n**Affected Service:** payment-service, order-service  \n**Severity:** P1  \n**Date:** 2024-12-03  \n**Duration:** 1 hour 12 minutes (09:05 – 10:17 UTC)  \n**Author:** Payments Engineering\n\n---"
+  },
+  {
+    "node_id": "payment-gateway-cascading-timeouts-sec1",
+    "incident_title": "INC-0055: Payment Gateway Cascading Timeout Failures",
+    "service": "payment-service, order-service",
+    "source_file": "payment-gateway-cascading-timeouts.md",
+    "section_heading": "Symptoms",
+    "section_summary": "payment service began throwing ReadTimeoutError on calls to the external Stripe gateway at 09:05 UTC. order service , which calls payment service sync...",
+    "section_text": "- `payment-service` began throwing `ReadTimeoutError` on calls to the external Stripe gateway at 09:05 UTC.\n- `order-service`, which calls `payment-service` synchronously, accumulated blocked threads waiting for payment confirmation.\n- `order-service` thread pool exhausted within 6 minutes, causing all endpoints (including non-payment ones like `GET /orders/{id}`) to return 503.\n- End users saw checkout failures and \"Something went wrong\" on the order status page.\n- Stripe status page showed a degradation event on their EU-West region starting at 08:58 UTC."
+  },
+  {
+    "node_id": "payment-gateway-cascading-timeouts-sec2",
+    "incident_title": "INC-0055: Payment Gateway Cascading Timeout Failures",
+    "service": "payment-service, order-service",
+    "source_file": "payment-gateway-cascading-timeouts.md",
+    "section_heading": "Root Cause",
+    "section_summary": "Stripe experienced a partial outage in eu west 1 affecting payment intent creation. Their API was accepting requests but responding in 55–90 seconds i...",
+    "section_text": "Stripe experienced a partial outage in `eu-west-1` affecting payment intent creation. Their API was accepting requests but responding in 55–90 seconds instead of the normal <2 seconds.\n\n`payment-service` had a hardcoded `timeout=60s` on the Stripe HTTP client. This meant each in-flight payment attempt held an active thread for up to 60 seconds before failing.\n\nAt peak checkout volume (~150 req/min), this produced ~150 stuck threads within one minute. The `order-service` Tomcat thread pool (default 200 threads) was exhausted completely, taking down all order functionality — far beyond just payments.\n\nThe cascading failure was caused by two missing safeguards:\n1. No **circuit breaker** on the Stripe client — once the timeout pattern was established, the system kept sending requests into the degraded upstream.\n2. No **bulkhead** separating payment threads from order-read threads — a payment failure starved the entire `order-service`."
+  },
+  {
+    "node_id": "payment-gateway-cascading-timeouts-sec3",
+    "incident_title": "INC-0055: Payment Gateway Cascading Timeout Failures",
+    "service": "payment-service, order-service",
+    "source_file": "payment-gateway-cascading-timeouts.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Immediate mitigation (t+14 min): Reduced Stripe HTTP timeout from 60s to 5s via environment variable override and redeployed payment service . This...",
+    "section_text": "1. **Immediate mitigation (t+14 min):** Reduced Stripe HTTP timeout from 60s to 5s via environment variable override and redeployed `payment-service`. This freed threads quickly as requests failed fast.\n2. **Bulkhead mitigation (t+28 min):** Separated payment processing into a dedicated `CompletableFuture` thread pool (50 threads) isolated from the main request threads.\n3. **Stripe recovered (t+72 min):** Stripe resolved their outage at 10:10 UTC; `payment-service` error rate returned to baseline.\n4. **Post-incident:** Enabled fallback to `eu-central-1` Stripe endpoint for payment intents."
+  },
+  {
+    "node_id": "payment-gateway-cascading-timeouts-sec4",
+    "incident_title": "INC-0055: Payment Gateway Cascading Timeout Failures",
+    "service": "payment-service, order-service",
+    "source_file": "payment-gateway-cascading-timeouts.md",
+    "section_heading": "Prevention",
+    "section_summary": "Implement Resilience4j CircuitBreaker on all external payment gateway calls; open after 5 consecutive timeouts in 30s. Add a Bulkhead annotation limit...",
+    "section_text": "- Implement Resilience4j `CircuitBreaker` on all external payment gateway calls; open after 5 consecutive timeouts in 30s.\n- Add a `Bulkhead` annotation limiting concurrent payment calls to 30, queued to 10, with a fallback that returns `PAYMENT_PENDING` and retries async.\n- Reduce all external HTTP client timeouts to `connectTimeout=2s`, `readTimeout=10s`.\n- Subscribe to Stripe status page webhooks and automatically enable a graceful degradation mode (queue payments for async retry) when degradation is detected."
+  },
+  {
+    "node_id": "user-auth-redis-oom-sec0",
+    "incident_title": "INC-0067: User Auth Service Outage from Redis Out-of-Memory",
+    "service": "user-auth-service",
+    "source_file": "user-auth-redis-oom.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0067: User Auth Service Outage from Redis Out of Memory Affected Service: user auth service Severity: P1 Date: 2025 01 19 Duration: 23 minutes (03...",
+    "section_text": "# INC-0067: User Auth Service Outage from Redis Out-of-Memory\n\n**Affected Service:** user-auth-service  \n**Severity:** P1  \n**Date:** 2025-01-19  \n**Duration:** 23 minutes (03:41 – 04:04 UTC)  \n**Author:** Identity Platform Team\n\n---"
+  },
+  {
+    "node_id": "user-auth-redis-oom-sec1",
+    "incident_title": "INC-0067: User Auth Service Outage from Redis Out-of-Memory",
+    "service": "user-auth-service",
+    "source_file": "user-auth-redis-oom.md",
+    "section_heading": "Symptoms",
+    "section_summary": "All login and session validation requests began returning HTTP 500 at 03:41 UTC. user auth service logs flooded with: MISCONF Redis is configured to s...",
+    "section_text": "- All login and session-validation requests began returning HTTP 500 at 03:41 UTC.\n- `user-auth-service` logs flooded with: `MISCONF Redis is configured to save RDB snapshots, but it's currently unable to persist to disk. Commands that may modify the data set are disabled.`\n- Any service calling `user-auth-service` to validate JWT tokens received 401 responses, triggering a mass user logout across the platform.\n- Approximately 42,000 active sessions were invalidated.\n- Redis memory usage showed 99.98% of `maxmemory=2gb` at time of incident."
+  },
+  {
+    "node_id": "user-auth-redis-oom-sec2",
+    "incident_title": "INC-0067: User Auth Service Outage from Redis Out-of-Memory",
+    "service": "user-auth-service",
+    "source_file": "user-auth-redis-oom.md",
+    "section_heading": "Root Cause",
+    "section_summary": "The Redis instance serving as the session store ( auth redis prod ) hit its 2 GB maxmemory limit. The configured eviction policy was noeviction , mean...",
+    "section_text": "The Redis instance serving as the session store (`auth-redis-prod`) hit its 2 GB `maxmemory` limit. The configured eviction policy was `noeviction`, meaning Redis refused all write commands (including `SET`, `EXPIRE`) once memory was full.\n\nThe memory spike was caused by a session leak in a new feature deployed at 23:00 UTC the previous day: a \"remember me\" token was being stored with no TTL (missing `.expire()` call in the auth service), causing tokens to accumulate indefinitely. Over ~4.7 hours, these entries grew from 0 to ~680 MB, filling the remaining headroom in Redis.\n\nRedis's RDB persistence also failed to snapshot because the AOF rewrite was running and the instance ran out of memory mid-snapshot, triggering the `MISCONF` error that blocked all writes."
+  },
+  {
+    "node_id": "user-auth-redis-oom-sec3",
+    "incident_title": "INC-0067: User Auth Service Outage from Redis Out-of-Memory",
+    "service": "user-auth-service",
+    "source_file": "user-auth-redis-oom.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Immediate mitigation (t+4 min): Connected to Redis via redis cli and ran CONFIG SET maxmemory policy allkeys lru . This allowed Redis to start evic...",
+    "section_text": "1. **Immediate mitigation (t+4 min):** Connected to Redis via `redis-cli` and ran `CONFIG SET maxmemory-policy allkeys-lru`. This allowed Redis to start evicting least-recently-used keys, freeing memory for writes. Auth service began recovering immediately.\n2. **TTL cleanup (t+11 min):** Identified the keyspace pattern (`remember_me:*`) and ran `SCAN` with `DEL` to remove ~2.1M orphaned keys (via a Lua script to avoid blocking the event loop).\n3. **Full recovery (t+23 min):** Auth service error rate returned to 0%. Users prompted to log in again due to session invalidation.\n4. **Code fix deployed (t+6 hours):** Patched `remember-me` token creation to include `EXPIRE 30d`; deployed to production."
+  },
+  {
+    "node_id": "user-auth-redis-oom-sec4",
+    "incident_title": "INC-0067: User Auth Service Outage from Redis Out-of-Memory",
+    "service": "user-auth-service",
+    "source_file": "user-auth-redis-oom.md",
+    "section_heading": "Prevention",
+    "section_summary": "Change Redis eviction policy from noeviction to allkeys lru as the permanent default for session stores. Add Redis memory usage alert at 70% and 85% t...",
+    "section_text": "- Change Redis eviction policy from `noeviction` to `allkeys-lru` as the permanent default for session stores.\n- Add Redis memory usage alert at 70% and 85% thresholds (previously only had a 95% alert).\n- Add integration test asserting that every stored key has a TTL; fail CI if any `SET` is called without a subsequent `EXPIRE`.\n- Audit all Redis `SET` calls in auth codebase for missing TTL (ticket: SEC-441).\n- Increase Redis instance to 4 GB as a buffer while the root-cause fix is validated."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec0",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Que",
+    "service": "**** notification-service",
+    "source_file": "notification-service-queue-backlog.pdf",
+    "section_heading": "Introduction",
+    "section_summary": "Severity: P2 Date: 2025 03 11 Duration: 2 hours 51 minutes (10:33 · 13:24 UTC) Author: Messaging Infrastructure",
+    "section_text": "**Severity:** P2\n**Date:** 2025-03-11\n**Duration:** 2 hours 51 minutes (10:33 · 13:24 UTC)\n**Author:** Messaging Infrastructure\n---"
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec1",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Que",
+    "service": "**** notification-service",
+    "source_file": "notification-service-queue-backlog.pdf",
+    "section_heading": "Symptoms",
+    "section_summary": "At 10:33 UTC, users stopped receiving order confirmation emails and push notif ications. notification service logs showed zero errors · the service ap...",
+    "section_text": "- At 10:33 UTC, users stopped receiving order confirmation emails and push notif\nications.\n- `notification-service` logs showed zero errors · the service appeared healthy.\n- SQS queue depth for `notification-jobs-prod` began climbing at ~1,800 messages\n/minute.\n- By 11:00 UTC the queue depth was 48,000 messages; by 13:00 UTC it was 218,000.\n- Dashboards showed `notification_messages_consumed` metric flat at 0 for the af\nfected period.\n- All notification-service pods showed CPU < 5% and memory nominal · no signs of\na crash."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec2",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Que",
+    "service": "**** notification-service",
+    "source_file": "notification-service-queue-backlog.pdf",
+    "section_heading": "Root Cause",
+    "section_summary": "A deployment at 10:28 UTC introduced a new EmailTemplateService dependency via constructor injection. The dependency's bean initialisation failed sile...",
+    "section_text": "A deployment at 10:28 UTC introduced a new `EmailTemplateService` dependency via\nconstructor injection. The dependency's bean initialisation failed silently: a missing Handlebars template file (`order_confirm\nThe SQS consumer listener (`@SqsListener`) uses Spring's `SimpleMessageListenerC\nontainer`, which starts only after full `ApplicationContext` refresh. Because the refresh never completed (no exception was th\nThe service returned 200 on `/actuator/health` because the health check bean had\nalready initialized before the failure point, masking the broken state entirely.\nThe dead-letter queue (DLQ) was not triggered because messages were never consum\ned, not consumed-and-failed · they simply sat in the main queue."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec3",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Que",
+    "service": "**** notification-service",
+    "source_file": "notification-service-queue-backlog.pdf",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Root cause identified (t+41 min): Noticed notification messages consumed =0 despite healthy pods. SSH'd into a pod and checked ApplicationContext l...",
+    "section_text": "1. **Root cause identified (t+41 min):** Noticed `notification_messages_consumed\n=0` despite healthy pods. SSH'd into a pod and checked `ApplicationContext` logs · found `Caused by: FileNotFoundExcept\n2. **Immediate mitigation (t+58 min):** Rolled back the deployment to the previo\nus image tag. Consumer listeners started within 30 seconds of rollback; queue depth began draining.\n3. **Queue drain (t+58 min · t+171 min):** Scaled `notification-service` from 3\nto 12 pods to drain the 218,000-message backlog. Drain rate: ~2,200 messages/minute. Backlog cleared by 13:24 UTC.\n4. **Template file restored (same day):** Added missing `order_confirmation_v3.h\nbs` to the resource bundle and re-deployed successfully at 15:00 UTC."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec4",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Que",
+    "service": "**** notification-service",
+    "source_file": "notification-service-queue-backlog.pdf",
+    "section_heading": "Prevention",
+    "section_summary": "Add startup probe (not just liveness probe) that verifies ApplicationContext is fully refreshed and all listeners are active before marking the pod re...",
+    "section_text": "- Add startup probe (not just liveness probe) that verifies `ApplicationContext`\nis fully refreshed and all listeners are active before marking the pod ready.\n- Add an integration test that starts the Spring ApplicationContext in a test co\nntainer and asserts the SQS listener is registered.\n- Create a CloudWatch alarm on `notification_messages_consumed = 0 for 5 minutes\nwhen queue_depth > 100` to catch silent consumer failures earlier (estimated MTTD reduction: 41 min · <8 min).\n- Review all `@Lazy` and partially-initialized beans for silent failure modes; e\nnforce fail-fast startup with `spring.main.lazy-initialization=false`."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec0",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.docx",
+    "section_heading": "Introduction",
+    "section_summary": "Severity: P2 Date: 2025 03 11 Duration: 2 hours 51 minutes (10:33 – 13:24 UTC) Author: Messaging Infrastructure",
+    "section_text": "**Severity:** P2\n**Date:** 2025-03-11\n**Duration:** 2 hours 51 minutes (10:33 – 13:24 UTC)\n**Author:** Messaging Infrastructure\n---"
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec1",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.docx",
+    "section_heading": "Symptoms",
+    "section_summary": "At 10:33 UTC, users stopped receiving order confirmation emails and push notifications. notification service logs showed zero errors — the service app...",
+    "section_text": "- At 10:33 UTC, users stopped receiving order confirmation emails and push notifications.\n- `notification-service` logs showed zero errors — the service appeared healthy.\n- SQS queue depth for `notification-jobs-prod` began climbing at ~1,800 messages/minute.\n- By 11:00 UTC the queue depth was 48,000 messages; by 13:00 UTC it was 218,000.\n- Dashboards showed `notification_messages_consumed` metric flat at 0 for the affected period.\n- All notification-service pods showed CPU < 5% and memory nominal — no signs of a crash."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec2",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.docx",
+    "section_heading": "Root Cause",
+    "section_summary": "A deployment at 10:28 UTC introduced a new EmailTemplateService dependency via constructor injection. The dependency's bean initialisation failed sile...",
+    "section_text": "A deployment at 10:28 UTC introduced a new `EmailTemplateService` dependency via constructor injection. The dependency's bean initialisation failed silently: a missing Handlebars template file (`order_confirmation_v3.hbs`) caused the `ApplicationContext` to partially start — all beans unrelated to `EmailTemplateService` initialized correctly, including the health check endpoint.\nThe SQS consumer listener (`@SqsListener`) uses Spring's `SimpleMessageListenerContainer`, which starts only after full `ApplicationContext` refresh. Because the refresh never completed (no exception was thrown — the missing template caused a lazy-initialisation path), the listener never started. Messages accumulated in the queue unconsumed.\nThe service returned 200 on `/actuator/health` because the health check bean had already initialized before the failure point, masking the broken state entirely.\nThe dead-letter queue (DLQ) was not triggered because messages were never consumed, not consumed-and-failed — they simply sat in the main queue."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec3",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.docx",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Root cause identified (t+41 min): Noticed notification messages consumed=0 despite healthy pods. SSH'd into a pod and checked ApplicationContext lo...",
+    "section_text": "1. **Root cause identified (t+41 min):** Noticed `notification_messages_consumed=0` despite healthy pods. SSH'd into a pod and checked `ApplicationContext` logs — found `Caused by: FileNotFoundException: order_confirmation_v3.hbs not found`.\n2. **Immediate mitigation (t+58 min):** Rolled back the deployment to the previous image tag. Consumer listeners started within 30 seconds of rollback; queue depth began draining.\n3. **Queue drain (t+58 min – t+171 min):** Scaled `notification-service` from 3 to 12 pods to drain the 218,000-message backlog. Drain rate: ~2,200 messages/minute. Backlog cleared by 13:24 UTC.\n4. **Template file restored (same day):** Added missing `order_confirmation_v3.hbs` to the resource bundle and re-deployed successfully at 15:00 UTC."
+  },
+  {
+    "node_id": "notification-service-queue-backlog-sec4",
+    "incident_title": "INC-0094: Notification Service Queue Backlog from Dead-Letter Queue Misconfiguration",
+    "service": "notification-service",
+    "source_file": "notification-service-queue-backlog.docx",
+    "section_heading": "Prevention",
+    "section_summary": "Add startup probe (not just liveness probe) that verifies ApplicationContext is fully refreshed and all listeners are active before marking the pod re...",
+    "section_text": "- Add startup probe (not just liveness probe) that verifies `ApplicationContext` is fully refreshed and all listeners are active before marking the pod ready.\n- Add an integration test that starts the Spring ApplicationContext in a test container and asserts the SQS listener is registered.\n- Create a CloudWatch alarm on `notification_messages_consumed = 0 for 5 minutes when queue_depth > 100` to catch silent consumer failures earlier (estimated MTTD reduction: 41 min → <8 min).\n- Review all `@Lazy` and partially-initialized beans for silent failure modes; enforce fail-fast startup with `spring.main.lazy-initialization=false`."
+  }
+]
