@@ -35,6 +35,20 @@ class IncidentSearchResponse(BaseModel):
     degraded: bool = False  # True when all LLM providers failed; raw chunks returned
 
 
+class AnalyzeRequest(BaseModel):
+    query: str
+    context: str | None = None
+
+
+class AnalyzeResponse(BaseModel):
+    mode: str
+    confidence: float
+    answer: str
+    sources: list[str]
+    reasoning: str
+    suggested_fixes: list[str]
+    diagnostic_ran: bool
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -56,6 +70,46 @@ async def ask(body: AskRequest) -> AskResponse:
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     return AskResponse(answer=answer)
+
+
+@app.post("/incident/analyze", response_model=AnalyzeResponse)
+async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
+    """
+    Agentic endpoint (Phase 3) — Uses a LangChain ReAct agent to reason about the query,
+    decide which retrieval tools to use (vector vs tree), and return a structured 3-mode response.
+    """
+    from services.agent.incident_agent import IncidentAgent
+    
+    agent = IncidentAgent()
+    
+    # We pass the query directly to the agent. If the user provided extra context,
+    # we could prepend it to the query here.
+    query_text = body.query
+    if body.context:
+        query_text = f"{body.context}\n\nQuestion: {body.query}"
+        
+    try:
+        result_dict = agent.run(query_text)
+        return AnalyzeResponse(**result_dict)
+    except Exception as exc:
+        logger.exception("[incident/analyze] Agent completely failed")
+        
+        # Graceful degradation on total agent failure
+        # Fall back to returning raw vector chunks so the engineer sees *something*
+        try:
+            chunks = search_incidents(query=body.query, k=3)
+            sources = _format_sources(chunks, include_text=True)
+            return AnalyzeResponse(
+                mode="unknown",
+                confidence=0.0,
+                answer="Agent analysis failed. Showing raw related incidents as fallback.",
+                sources=sources,
+                reasoning=f"Agent exception: {exc}",
+                suggested_fixes=[],
+                diagnostic_ran=False
+            )
+        except Exception as fallback_exc:
+            raise HTTPException(status_code=500, detail=f"Agent failed, and fallback failed: {fallback_exc}")
 
 
 @app.post("/incident/search", response_model=IncidentSearchResponse)

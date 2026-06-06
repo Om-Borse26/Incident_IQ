@@ -1,0 +1,4 @@
+id,method,query,should_answer,expected_source,context_precision,faithful,relevant,idk_correct,latency_ms,retrieved_sources,answer_snippet
+C1,vectorless,Why was the checkout service returning 500 errors?,True,checkout-service-db-pool-exhaustion.md,1,0,1,,6477,checkout-service-db-pool-exhaustion.md,"According to `checkout-service-db-pool-exhaustion.md`, the checkout service..."
+C3,vectorless,What caused the API gateway to return mass 502 errors?,True,api-gateway-502-health-check-misconfiguration.md,1,1,1,,3545,api-gateway-502-health-check-misconfiguration.md,"According to `api-gateway-502-health-check-misconfiguration.md`, the mass 502..."
+C8,vectorless,What is the capital of France and how does it affect our SLA?,False,—,,0,0,1,1130,,I don't have enough information in the provided incident reports to answer...

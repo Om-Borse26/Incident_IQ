@@ -222,3 +222,41 @@ def ask_llm(prompt: str, system: str | None = None) -> str:
         f"Order tried: {order}. "
         f"Errors: {errors}"
     )
+
+
+def get_chat_model():
+    """
+    Returns a LangChain BaseChatModel configured with our fallback chain.
+    This is used by LangChain agents (e.g. AgentExecutor) to ensure they
+    respect the same fallback and retry logic as the rest of the application.
+    """
+    from langchain_core.language_models.chat_models import BaseChatModel
+    
+    order = [p.strip().lower() for p in settings.LLM_FALLBACK_ORDER.split(",")]
+    models = []
+    
+    for provider_name in order:
+        if provider_name == "groq" and settings.GROQ_API_KEY:
+            from langchain_groq import ChatGroq
+            models.append(ChatGroq(
+                model=settings.GROQ_MODEL,
+                api_key=settings.GROQ_API_KEY,
+                max_retries=3,
+            ))
+        elif provider_name == "gemini" and settings.GEMINI_API_KEY:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            models.append(ChatGoogleGenerativeAI(
+                model=settings.GEMINI_MODEL,
+                google_api_key=settings.GEMINI_API_KEY,
+                max_retries=0,
+            ))
+            
+    if not models:
+        raise ValueError("No LLM providers configured for the agent.")
+        
+    primary_model = models[0]
+    if len(models) > 1:
+        # Use LangChain's native fallback feature
+        return primary_model.with_fallbacks(models[1:])
+        
+    return primary_model
