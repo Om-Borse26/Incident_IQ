@@ -23,18 +23,43 @@ const sourcesTags = document.getElementById('sources-tags');
 const approvalBox = document.getElementById('approval-box');
 
 let currentSessionId = null;
+let loadingInterval = null;
+
+const loadingStages = [
+    "🔍 Retrieving historical incidents...",
+    "🛠️ Running live system diagnostics...",
+    "🧠 AI generating root cause...",
+    "🛡️ Verifying security rules..."
+];
+
+function startLoading() {
+    resultsContainer.classList.remove('hidden');
+    loadingState.classList.remove('hidden');
+    contentState.classList.add('hidden');
+    errorState.classList.add('hidden');
+    btn.disabled = true;
+
+    const loaderText = loadingState.querySelector('p');
+    loaderText.textContent = loadingStages[0];
+    let stage = 0;
+    loadingInterval = setInterval(() => {
+        stage = (stage + 1) % loadingStages.length;
+        loaderText.textContent = loadingStages[stage];
+    }, 2500); // Change text every 2.5 seconds
+}
+
+function stopLoading() {
+    clearInterval(loadingInterval);
+    loadingState.classList.add('hidden');
+    btn.disabled = false;
+}
 
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const query = input.value.trim();
     if (!query) return;
 
-    // Reset UI
-    resultsContainer.classList.remove('hidden');
-    loadingState.classList.remove('hidden');
-    contentState.classList.add('hidden');
-    errorState.classList.add('hidden');
-    btn.disabled = true;
+    startLoading();
 
     try {
         const response = await fetch(`${API_BASE_URL}/incident/analyze`, {
@@ -50,16 +75,14 @@ form.addEventListener('submit', async (e) => {
 
     } catch (err) {
         console.error(err);
-        loadingState.classList.add('hidden');
+        stopLoading();
         errorState.classList.remove('hidden');
         errorText.textContent = err.message || "Failed to analyze incident.";
-    } finally {
-        btn.disabled = false;
     }
 });
 
 function renderResult(data) {
-    loadingState.classList.add('hidden');
+    stopLoading();
     contentState.classList.remove('hidden');
     
     currentSessionId = data.session_id;
@@ -126,8 +149,7 @@ async function resumeGraph(action) {
     if (!currentSessionId) return;
 
     approvalBox.classList.add('hidden');
-    loadingState.classList.remove('hidden');
-    contentState.classList.add('hidden');
+    startLoading();
     
     try {
         const response = await fetch(`${API_BASE_URL}/incident/analyze`, {
