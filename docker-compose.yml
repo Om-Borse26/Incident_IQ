@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8080"
+    volumes:
+      - ./chroma_db:/app/chroma_db
+      - ./tree_index:/app/tree_index
+    env_file:
+      - .env
+    environment:
+      - PORT=8080

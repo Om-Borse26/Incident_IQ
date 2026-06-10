@@ -1,4 +1,6 @@
 import logging
+import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -6,10 +8,19 @@ from pydantic import BaseModel
 from app.llm.client import ask_llm, LLMError, LLMAllProvidersFailed
 from services.retrieval.search import search_incidents, SearchResult
 from services.retrieval.tree_search import tree_search, TreeSearchResult
+from services.agent.incident_graph import incident_graph
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="IncidentIQ")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Application startup...")
+    # Future: Cloud Run migration would add GCS snapshot restore here.
+    # Railway uses persistent volumes, so no restore step is needed.
+    yield
+    logger.info("Application shutdown...")
+
+app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +49,8 @@ class IncidentSearchResponse(BaseModel):
 class AnalyzeRequest(BaseModel):
     query: str
     context: str | None = None
+    session_id: str | None = None
+    resume_action: str | None = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -49,6 +62,8 @@ class AnalyzeResponse(BaseModel):
     suggested_fixes: list[str]
     diagnostics_available: bool
     degraded: bool
+    session_id: str
+    status: str
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -76,27 +91,65 @@ async def ask(body: AskRequest) -> AskResponse:
 @app.post("/incident/analyze", response_model=AnalyzeResponse)
 async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     """
-    Agentic endpoint (Phase 3) — Uses a LangChain ReAct agent to reason about the query,
-    decide which retrieval tools to use (vector vs tree), and return a structured 3-mode response.
+    Agentic endpoint (Phase 5) — Uses LangGraph for explicit state and orchestration.
     """
-    from services.agent.incident_agent import IncidentAgent
+    from services.agent.incident_graph import incident_graph
+    from langgraph.types import Command
+    import uuid
     
-    agent = IncidentAgent()
+    session_id = body.session_id or str(uuid.uuid4())
+    config = {
+        "configurable": {"thread_id": session_id},
+        "run_name": "incident_analysis",
+        "metadata": {
+            "session_id": session_id
+        }
+    }
     
-    # We pass the query directly to the agent. If the user provided extra context,
-    # we could prepend it to the query here.
     query_text = body.query
     if body.context:
         query_text = f"{body.context}\n\nQuestion: {body.query}"
         
     try:
-        result_dict = await agent.run(query_text)
-        return AnalyzeResponse(**result_dict)
-    except Exception as exc:
-        logger.exception("[incident/analyze] Agent completely failed")
+        if body.resume_action:
+            logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
+            stream = incident_graph.astream(Command(resume={"action": body.resume_action}), config)
+        else:
+            initial_state = {"query": query_text, "context": body.context or ""}
+            stream = incident_graph.astream(initial_state, config)
+            
+        status = "completed"
+        async for event in stream:
+            for node_name, node_state in event.items():
+                if node_name == "__interrupt__":
+                    logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
+                    status = "pending_approval"
+                    continue
+                logger.info(f"[analyze] Node completed: {node_name}")
+                
+        # Fetch final state from memory checkpointer
+        current_state = incident_graph.get_state(config).values
         
-        # Graceful degradation on total agent failure
-        # Fall back to returning raw vector chunks so the engineer sees *something*
+        answer = current_state.get("answer", "")
+        if status == "pending_approval":
+            answer = "Graph execution paused waiting for human approval. Reply with resume_action='approve' to continue."
+            
+        return AnalyzeResponse(
+            mode=current_state.get("mode", "unknown"),
+            confidence=current_state.get("confidence", 0.0),
+            answer=answer,
+            sources=current_state.get("sources", []),
+            reasoning=current_state.get("reasoning", ""),
+            suggested_fixes=current_state.get("suggested_fixes", []),
+            diagnostics_available=current_state.get("diagnostics_available", False),
+            degraded=False,
+            session_id=session_id,
+            status=status
+        )
+    except Exception as exc:
+        logger.exception("[incident/analyze] Graph completely failed")
+        
+        # Graceful degradation on total graph failure
         try:
             chunks = search_incidents(query=body.query, k=3)
             sources = _format_sources(chunks, include_text=True)
@@ -108,7 +161,9 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
                 reasoning=f"Agent exception: {exc}",
                 suggested_fixes=[],
                 diagnostics_available=False,
-                degraded=True
+                degraded=True,
+                session_id=session_id,
+                status="failed"
             )
         except Exception as fallback_exc:
             raise HTTPException(status_code=500, detail=f"Agent failed, and fallback failed: {fallback_exc}")

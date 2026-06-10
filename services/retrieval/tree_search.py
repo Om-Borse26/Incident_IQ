@@ -37,13 +37,22 @@ class TreeSearchResult(BaseModel):
 # Logic
 # ---------------------------------------------------------------------------
 
-def _load_index() -> list[TreeNode]:
+_tree_index = None
+
+def _get_tree_index() -> list[TreeNode]:
     """Load the JSON tree index into memory."""
-    if not INDEX_PATH.exists():
-        logger.warning(f"Tree index not found at {INDEX_PATH}. Please run tree_index.py")
-        return []
-    with INDEX_PATH.open("r", encoding="utf-8") as f:
-        return json.load(f)
+    global _tree_index
+    if _tree_index is None:
+        from app.config import settings
+        import os
+        tree_path = os.path.join(settings.DATA_DIR, "tree_index", "incidents_tree.json")
+        try:
+            with open(tree_path, "r", encoding="utf-8") as f:
+                _tree_index = json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load tree index from {tree_path}: {e}")
+            _tree_index = []
+    return _tree_index
 
 
 def _build_toc_prompt(nodes: list[TreeNode]) -> str:
@@ -72,6 +81,9 @@ def _build_toc_prompt(nodes: list[TreeNode]) -> str:
     return "\n".join(toc_lines)
 
 
+from langsmith import traceable
+
+@traceable(run_name="vectorless_retrieval")
 def tree_search(query: str) -> list[TreeSearchResult]:
     """
     Perform a vectorless reasoning search over the document structure.
@@ -81,7 +93,7 @@ def tree_search(query: str) -> list[TreeSearchResult]:
     3. Handles malformed JSON output gracefully.
     4. Returns the FULL text of the selected nodes.
     """
-    nodes = _load_index()
+    nodes = _get_tree_index()
     if not nodes:
         return []
 

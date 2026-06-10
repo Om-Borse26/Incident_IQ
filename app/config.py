@@ -17,6 +17,19 @@ class Settings(BaseSettings):
     )
 
     # ------------------------------------------------------------------
+    # Server Configuration
+    # ------------------------------------------------------------------
+    PORT: int = 8080
+
+    # ------------------------------------------------------------------
+    # Data directories — platform-agnostic path abstraction.
+    # Railway sets DATA_DIR=/data (persistent volume mount).
+    # Cloud Run sets DATA_DIR=/tmp (ephemeral, restored from GCS).
+    # Locally, DATA_DIR is unset → defaults to "." → ./chroma_db as before.
+    # ------------------------------------------------------------------
+    DATA_DIR: str = "."
+
+    # ------------------------------------------------------------------
     # LLM routing — kept for single-provider mode backward compat,
     # but ask_llm() now uses LLM_FALLBACK_ORDER for the chain.
     # ------------------------------------------------------------------

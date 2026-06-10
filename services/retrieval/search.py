@@ -100,8 +100,10 @@ def _get_collection() -> chromadb.Collection:
     if _collection is None:
         # anonymized_telemetry=False silences the broken posthog integration
         # in chromadb 0.6.3 ("capture() takes 1 positional argument but 3 were given")
+        from app.config import settings
+        chroma_path = os.path.join(settings.DATA_DIR, "chroma_db")
         client = chromadb.PersistentClient(
-            path=str(CHROMA_DIR),
+            path=chroma_path,
             settings=chromadb.Settings(anonymized_telemetry=False),
         )
         _collection = client.get_collection(COLLECTION_NAME)
@@ -113,6 +115,9 @@ def _get_collection() -> chromadb.Collection:
 # ---------------------------------------------------------------------------
 
 
+from langsmith import traceable
+
+@traceable(run_name="vector_retrieval")
 def search_incidents(query: str, k: int = 4) -> list[SearchResult]:
     """
     Return the k most relevant incident chunks for the given query.
