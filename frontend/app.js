@@ -230,7 +230,7 @@ function renderResult(data) {
     if (data.suggested_fixes && data.suggested_fixes.length > 0) {
         data.suggested_fixes.forEach(fix => {
             const li = document.createElement('li');
-            li.textContent = fix;
+            li.innerHTML = marked.parseInline(fix);
             fixesList.appendChild(li);
         });
     } else {

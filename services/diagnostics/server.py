@@ -5,22 +5,6 @@ from mcp.server.fastmcp import FastMCP
 # Instantiate the server
 mcp = FastMCP("DiagnosticsServer")
 
-ALLOWED_SERVICES = [
-    "checkout-service",
-    "payment-gateway",
-    "api-gateway",
-    "user-auth",
-    "notification-service",
-    "inventory-db"
-]
-
-def _validate_service(service_name: str):
-    """Ensure the agent only requests data for known, allowed services."""
-    if service_name not in ALLOWED_SERVICES:
-        raise ValueError(
-            f"Access Denied: Service '{service_name}' is not in the allowed list of diagnostic targets."
-        )
-
 @mcp.tool()
 def fetch_recent_logs(service_name: str, minutes: int = 30) -> str:
     """Fetch recent error logs for a service from the last N minutes.
@@ -28,10 +12,9 @@ def fetch_recent_logs(service_name: str, minutes: int = 30) -> str:
     Returns: structured log entries with timestamp, level, message.
     Do NOT use for: historical incident records (use search tools for those)."""
     
-    # SECURITY: Input validation prevents the LLM from executing arbitrary commands
-    # e.g., fetching logs from system32 or vault-service
-    _validate_service(service_name)
-    
+    if not service_name:
+        raise ValueError("Service name cannot be empty")
+        
     # In production, this would call real Datadog/GCP Logging APIs.
     # Here we mock realistic log entries, including a poisoned entry for security testing.
     
@@ -64,7 +47,8 @@ def check_service_health(service_name: str) -> str:
     Returns: status (healthy/degraded/down), error_rate, p99_latency, connection_count.
     Do NOT use for: historical data or root cause analysis."""
     
-    _validate_service(service_name)
+    if not service_name:
+        raise ValueError("Service name cannot be empty")
     
     # In production, this would call real Datadog/Prometheus APIs.
     
@@ -97,7 +81,8 @@ def get_recent_deploys(service_name: str, hours: int = 24) -> str:
     Returns: deploy timestamps, commit hashes, deployer, config changes.
     Do NOT use for: anything other than deploy history."""
     
-    _validate_service(service_name)
+    if not service_name:
+        raise ValueError("Service name cannot be empty")
     
     # In production, this would call real GitHub Actions/ArgoCD/GitLab APIs.
     
