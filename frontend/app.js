@@ -204,6 +204,25 @@ function renderResult(data) {
     
     currentSessionId = data.session_id;
 
+    // Clear old banners
+    const oldBanner = document.getElementById('postmortem-banner');
+    if (oldBanner) oldBanner.remove();
+
+    // Show success banner if a postmortem was generated
+    if (data.generated_postmortem_path && !data.generated_postmortem_path.startsWith('Error')) {
+        const filename = data.generated_postmortem_path.split(/[/\\]/).pop();
+        const banner = document.createElement('div');
+        banner.id = 'postmortem-banner';
+        banner.style.background = 'rgba(16, 185, 129, 0.1)';
+        banner.style.color = 'var(--success)';
+        banner.style.padding = '1rem';
+        banner.style.borderRadius = '8px';
+        banner.style.marginBottom = '1.5rem';
+        banner.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        banner.innerHTML = `<strong>Success:</strong> Postmortem <code>${filename}</code> automatically generated and ingested into the Knowledge Base!`;
+        contentState.insertBefore(banner, contentState.firstChild);
+    }
+
     // Confidence
     const confPerc = Math.round((data.confidence || 0) * 100);
     confFill.style.width = `${confPerc}%`;

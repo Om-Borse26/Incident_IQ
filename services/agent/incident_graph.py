@@ -41,6 +41,7 @@ class IncidentState(TypedDict):
     # Control flow
     needs_postmortem: bool
     postmortem_approved: bool
+    generated_postmortem_path: str
     iteration_count: int
 
 
@@ -266,6 +267,49 @@ def human_approval_node(state: IncidentState) -> dict:
         
     return {"postmortem_approved": approved}
 
+async def generate_postmortem_node(state: IncidentState) -> dict:
+    """Generate a Markdown postmortem and save it to raw_documents."""
+    logger.info("[graph] generate_postmortem_node executing...")
+    llm = get_chat_model()
+    
+    prompt = f"""You are a Senior SRE. Write a professional incident postmortem in Markdown format.
+Use the following context to generate the postmortem:
+Query: {state['query']}
+Symptoms/Logs: {state.get('live_logs')}
+RCA / Answer: {state.get('answer')}
+Suggested Fixes: {chr(10).join(state.get('suggested_fixes', []))}
+
+The output MUST be pure markdown without code blocks backticks around the entire document.
+Include sections: # Incident Postmortem, ## Symptoms, ## Root Cause, ## Resolution Steps, ## Prevention."""
+    
+    try:
+        from langchain_core.messages import SystemMessage, HumanMessage
+        messages = [SystemMessage(content=prompt)]
+        res = await llm.ainvoke(messages)
+        
+        # Save to file
+        import time
+        from pathlib import Path
+        import os
+        
+        # Determine raw_documents directory
+        data_dir = os.environ.get("DATA_DIR", ".")
+        raw_docs_dir = Path(data_dir) / "raw_documents"
+        raw_docs_dir.mkdir(parents=True, exist_ok=True)
+        
+        filename = f"INC-{int(time.time())}.md"
+        file_path = raw_docs_dir / filename
+        
+        # Write markdown content
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(res.content)
+            
+        return {"generated_postmortem_path": str(file_path)}
+    except Exception as e:
+        logger.error(f"[graph] generate_postmortem_node failed: {e}")
+        return {"generated_postmortem_path": f"Error: {e}"}
+
+
 
 def respond_node(state: IncidentState) -> dict:
     """Terminal node to format the final output if necessary."""
@@ -291,6 +335,12 @@ def route_after_reason(state: IncidentState) -> str:
         return "human_approval_node"
     return "respond_node"
 
+def route_after_approval(state: IncidentState) -> str:
+    """Route to generate postmortem if approved, otherwise end."""
+    if state.get("postmortem_approved"):
+        return "generate_postmortem_node"
+    return "respond_node"
+
 def build_incident_graph():
     from langgraph.graph import StateGraph, START, END
     from langgraph.checkpoint.memory import MemorySaver
@@ -303,21 +353,22 @@ def build_incident_graph():
     workflow.add_node("retrieve_node", retrieve_node)
     workflow.add_node("reason_node", reason_node)
     workflow.add_node("human_approval_node", human_approval_node)
+    workflow.add_node("generate_postmortem_node", generate_postmortem_node)
     workflow.add_node("respond_node", respond_node)
 
     # Add edges
     workflow.add_edge(START, "classify_node")
     
-    # Conditional edge handles the parallel broadcast
-    workflow.add_conditional_edges("classify_node", route_after_classify, ["diagnose_node", "retrieve_node"])
-
-    # Both parallel branches converge to reason_node
+    workflow.add_conditional_edges("classify_node", route_after_classify)
+    
     workflow.add_edge("diagnose_node", "reason_node")
     workflow.add_edge("retrieve_node", "reason_node")
-
-    workflow.add_conditional_edges("reason_node", route_after_reason, ["human_approval_node", "respond_node"])
-
-    workflow.add_edge("human_approval_node", "respond_node")
+    
+    workflow.add_conditional_edges("reason_node", route_after_reason)
+    
+    workflow.add_conditional_edges("human_approval_node", route_after_approval)
+    workflow.add_edge("generate_postmortem_node", "respond_node")
+    
     workflow.add_edge("respond_node", END)
 
     # Compile with memory for checkpointing and crash recovery

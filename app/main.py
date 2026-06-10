@@ -96,6 +96,7 @@ class AnalyzeResponse(BaseModel):
     degraded: bool
     session_id: str
     status: str
+    generated_postmortem_path: str | None = None
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -166,6 +167,21 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
         if status == "pending_approval":
             answer = "Graph execution paused waiting for human approval. Reply with resume_action='approve' to continue."
             
+        generated_path = current_state.get("generated_postmortem_path")
+        
+        # Auto-ingest if a postmortem was generated
+        if generated_path and not generated_path.startswith("Error:"):
+            try:
+                from services.retrieval.ingest import ingest_single_document
+                import os
+                filename = os.path.basename(generated_path)
+                with open(generated_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                ingest_single_document(content, filename)
+                logger.info(f"[analyze] Successfully auto-ingested generated postmortem: {filename}")
+            except Exception as e:
+                logger.error(f"[analyze] Failed to auto-ingest postmortem: {e}")
+                
         return AnalyzeResponse(
             mode=current_state.get("mode", "unknown"),
             confidence=current_state.get("confidence", 0.0),
@@ -176,7 +192,8 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             diagnostics_available=current_state.get("diagnostics_available", False),
             degraded=False,
             session_id=session_id,
-            status=status
+            status=status,
+            generated_postmortem_path=generated_path
         )
     except Exception as exc:
         logger.exception("[incident/analyze] Graph completely failed")
