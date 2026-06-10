@@ -244,11 +244,22 @@ function renderResult(data) {
             const a = document.createElement('a');
             a.className = 'source-tag';
             a.textContent = src;
-            // The source usually looks like "INC-0041: ... (filename.md)"
-            // Let's try to extract the filename if it's in parentheses
-            const match = src.match(/\((.*?\.md)\)/);
+            // The source usually looks like "INC-0041: ... (filename.ext)" or just "filename.ext"
+            // Let's try to extract the filename
+            let filename = src;
+            const match = src.match(/\(([^)]+\.(?:md|txt|docx|pdf))\)$/i) || src.match(/^([^ ]+\.(?:md|txt|docx|pdf))$/i);
             if (match && match[1]) {
-                a.href = `${API_BASE_URL}/document/${match[1]}`;
+                filename = match[1];
+            } else if (src.includes('.')) {
+                // Fallback for just raw filenames
+                filename = src;
+            } else {
+                filename = null;
+            }
+
+            if (filename) {
+                a.href = `${API_BASE_URL}/document/${filename}`;
+                a.download = filename;
                 a.target = '_blank';
                 a.title = 'Click to download raw postmortem';
                 a.style.textDecoration = 'none';
