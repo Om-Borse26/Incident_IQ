@@ -167,12 +167,19 @@ body {
 }
 
 .btn-secondary {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-main);
+    background: transparent;
+    color: var(--text-muted);
     border: 1px solid var(--border-glass);
+    border-radius: 999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
 }
 .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--bg-glass);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 /* Layout */

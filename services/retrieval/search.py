@@ -48,7 +48,14 @@ from langchain_huggingface import HuggingFaceEmbeddings
 # ---------------------------------------------------------------------------
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CHROMA_DIR = _PROJECT_ROOT / "chroma_db"
+
+# Use persistent DATA_DIR if set, otherwise fallback to local chroma_db
+_DATA_DIR_ENV = os.environ.get("DATA_DIR")
+if _DATA_DIR_ENV and _DATA_DIR_ENV != ".":
+    CHROMA_DIR = Path(_DATA_DIR_ENV) / "chroma_db"
+else:
+    CHROMA_DIR = _PROJECT_ROOT / "chroma_db"
+
 COLLECTION_NAME = "incidents"
 
 # WHY THE SAME MODEL AS INGESTION:
