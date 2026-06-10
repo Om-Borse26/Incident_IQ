@@ -241,7 +241,8 @@ Provide the mode, confidence, detailed answer, reasoning, suggested fixes, and a
             "reasoning": res.reasoning,
             "suggested_fixes": res.suggested_fixes,
             "sources": final_sources,
-            "needs_postmortem": res.needs_postmortem
+            "needs_postmortem": res.needs_postmortem,
+            "iteration_count": state.get("iteration_count", 0) + 1
         }
     except Exception as e:
          logger.error(f"[graph] reason_node extraction failed: {e}")
@@ -333,6 +334,12 @@ def route_after_classify(state: IncidentState) -> List[str]:
 
 def route_after_reason(state: IncidentState) -> str:
     """Route to approval if needed, otherwise skip to respond."""
+    
+    # SAFEGUARD: Prevent infinite loops if graph is ever modified to cycle
+    if state.get("iteration_count", 0) > 3:
+        logger.warning("[graph] Iteration limit exceeded! Forcefully terminating loop.")
+        return "respond_node"
+        
     if state.get("needs_postmortem") and not state.get("postmortem_approved"):
         return "human_approval_node"
     return "respond_node"

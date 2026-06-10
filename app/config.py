@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Server Configuration
     # ------------------------------------------------------------------
     PORT: int = 8080
-    API_TOKEN: str = "super-secret-key"
+    API_TOKEN: str = ""
     GROQ_VALIDATOR_API_KEY: str | None = None  # Used for simple AuthN
 
     # ------------------------------------------------------------------

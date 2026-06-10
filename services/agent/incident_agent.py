@@ -115,6 +115,11 @@ Question: {input}
 # ---------------------------------------------------------------------------
 
 class IncidentAgent:
+    """
+    Legacy: AgentExecutor version (Phase 3/4).
+    Replaced by LangGraph in Phase 5 (see incident_graph.py).
+    Kept for comparison purposes.
+    """
     def __init__(self):
         self.base_tools = [search_incidents_tool, tree_search_tool]
         self.llm = get_chat_model()
