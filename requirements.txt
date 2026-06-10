@@ -23,3 +23,4 @@ python-docx==1.1.2
 mcp>=1.7
 langchain-mcp-adapters==0.1.0
 # google-cloud-storage>=2.16.0  # Uncomment when migrating to Cloud Run (see gcs_sync.py stub)
+cachetools==5.3.3
