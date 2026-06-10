@@ -353,12 +353,12 @@ async def download_document(filename: str):
     file_path = os.path.join(raw_docs_dir, filename)
     
     if os.path.exists(file_path):
-        return FileResponse(file_path, filename=filename)
+        return FileResponse(file_path, filename=filename, media_type="application/octet-stream", content_disposition_type="attachment")
         
     # Fallback to the pre-seeded data if not found in raw_documents
     seeded_path = os.path.join("data", "incidents", filename)
     if os.path.exists(seeded_path):
-        return FileResponse(seeded_path, filename=filename)
+        return FileResponse(seeded_path, filename=filename, media_type="application/octet-stream", content_disposition_type="attachment")
         
     raise HTTPException(status_code=404, detail="Document not found")
 
