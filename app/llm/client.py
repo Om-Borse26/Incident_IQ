@@ -242,6 +242,7 @@ def get_chat_model():
                 model=settings.GROQ_MODEL,
                 api_key=settings.GROQ_API_KEY,
                 max_retries=3,
+                temperature=0.3,
             ))
         elif provider_name == "gemini" and settings.GEMINI_API_KEY:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -249,6 +250,7 @@ def get_chat_model():
                 model=settings.GEMINI_MODEL,
                 google_api_key=settings.GEMINI_API_KEY,
                 max_retries=0,
+                temperature=0.3,
             ))
             
     if not models:
