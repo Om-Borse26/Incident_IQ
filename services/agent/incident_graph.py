@@ -295,6 +295,9 @@ def build_incident_graph():
     workflow.add_edge("respond_node", END)
 
     # Compile with memory for checkpointing and crash recovery
+    import warnings
+    from langchain_core._api.deprecation import LangChainPendingDeprecationWarning
+    warnings.filterwarnings("ignore", category=LangChainPendingDeprecationWarning)
     memory = MemorySaver()
     graph = workflow.compile(checkpointer=memory)
     
