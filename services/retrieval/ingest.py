@@ -35,12 +35,11 @@ import os
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 INCIDENTS_DIR = _PROJECT_ROOT / "data" / "incidents"
 
-# Use persistent DATA_DIR if set, otherwise fallback to local chroma_db
-_DATA_DIR_ENV = os.environ.get("DATA_DIR")
-if _DATA_DIR_ENV and _DATA_DIR_ENV != ".":
-    CHROMA_DIR = Path(_DATA_DIR_ENV) / "chroma_db"
-else:
-    CHROMA_DIR = _PROJECT_ROOT / "chroma_db"
+def get_chroma_dir() -> Path:
+    _DATA_DIR_ENV = os.environ.get("DATA_DIR")
+    if _DATA_DIR_ENV and _DATA_DIR_ENV != ".":
+        return Path(_DATA_DIR_ENV) / "chroma_db"
+    return _PROJECT_ROOT / "chroma_db"
 
 COLLECTION_NAME = "incidents"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # ~80 MB download on first run, then cached
@@ -238,7 +237,7 @@ def ingest_single_document(content: str, filename: str) -> None:
     import chromadb
     vectorstore = Chroma(
         collection_name=COLLECTION_NAME,
-        persist_directory=str(CHROMA_DIR),
+        persist_directory=str(get_chroma_dir()),
         embedding_function=embeddings,
         client_settings=chromadb.Settings(anonymized_telemetry=False)
     )

@@ -113,7 +113,12 @@ def _get_collection() -> chromadb.Collection:
             path=chroma_path,
             settings=chromadb.Settings(anonymized_telemetry=False),
         )
-        _collection = client.get_or_create_collection(COLLECTION_NAME)
+        try:
+            _collection = client.get_or_create_collection(COLLECTION_NAME)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"get_or_create_collection failed with: {e}. Forcing recreate...")
+            _collection = client.create_collection(COLLECTION_NAME)
     return _collection
 
 
