@@ -186,7 +186,11 @@ def ingest_incidents() -> None:
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
     # Wipe the existing collection so re-running ingest is always a clean slate
-    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    import chromadb
+    client = chromadb.PersistentClient(
+        path=str(CHROMA_DIR),
+        settings=chromadb.Settings(anonymized_telemetry=False)
+    )
     try:
         client.delete_collection(COLLECTION_NAME)
         print("      Deleted existing collection for clean re-ingestion.")
@@ -198,6 +202,7 @@ def ingest_incidents() -> None:
         embedding=embeddings,
         collection_name=COLLECTION_NAME,
         persist_directory=str(CHROMA_DIR),
+        client_settings=chromadb.Settings(anonymized_telemetry=False),
     )
 
     print("\n" + "=" * 60)
@@ -230,10 +235,12 @@ def ingest_single_document(content: str, filename: str) -> None:
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
     
     # We instantiate Chroma pointing to the same directory
+    import chromadb
     vectorstore = Chroma(
         collection_name=COLLECTION_NAME,
         persist_directory=str(CHROMA_DIR),
-        embedding_function=embeddings
+        embedding_function=embeddings,
+        client_settings=chromadb.Settings(anonymized_telemetry=False)
     )
     vectorstore.add_documents(chunks)
     logger.info(f"[ingest] Successfully ingested {filename} ({len(chunks)} chunks)")
