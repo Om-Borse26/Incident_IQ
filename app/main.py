@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -15,8 +16,21 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Application startup...")
+    
+    # Railway: If using a persistent volume at /data, it starts empty.
+    # We must copy the pre-seeded data from the Docker image into the volume.
+    data_dir = os.environ.get("DATA_DIR")
+    if data_dir and data_dir != ".":
+        logger.info(f"Checking if {data_dir} needs seeded data...")
+        if not os.path.exists(os.path.join(data_dir, "chroma_db")) and os.path.exists("chroma_db"):
+            logger.info("Copying seeded chroma_db to volume...")
+            shutil.copytree("chroma_db", os.path.join(data_dir, "chroma_db"))
+        
+        if not os.path.exists(os.path.join(data_dir, "tree_index")) and os.path.exists("tree_index"):
+            logger.info("Copying seeded tree_index to volume...")
+            shutil.copytree("tree_index", os.path.join(data_dir, "tree_index"))
+
     # Future: Cloud Run migration would add GCS snapshot restore here.
-    # Railway uses persistent volumes, so no restore step is needed.
     yield
     logger.info("Application shutdown...")
 
