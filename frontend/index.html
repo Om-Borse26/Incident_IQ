@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IncidentIQ - AI Ops Copilot</title>
+    <meta name="description" content="AI-powered incident diagnostics and resolution">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="glass-background">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <main class="app-container">
+        <header class="app-header">
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <h1>IncidentIQ</h1>
+            </div>
+            <div class="status-badge live">
+                <span class="pulse"></span> System Live
+            </div>
+        </header>
+
+        <section class="search-section">
+            <h2>Diagnose Incident</h2>
+            <form id="incident-form">
+                <div class="input-group">
+                    <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input type="text" id="query-input" placeholder="e.g. checkout-service: HTTP 500 errors" autocomplete="off" required>
+                    <button type="submit" id="analyze-btn">
+                        <span>Analyze</span>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section class="results-section hidden" id="results-container">
+            <div class="loading-state hidden" id="loading-spinner">
+                <div class="loader"></div>
+                <p>Analyzing telemetry, logs, and historical data...</p>
+            </div>
+
+            <div class="content-state hidden" id="result-content">
+                <div class="meta-panel">
+                    <div class="meta-item">
+                        <span class="label">Confidence</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="confidence-fill"></div>
+                        </div>
+                        <span class="value" id="confidence-val">0%</span>
+                    </div>
+                    <div class="meta-item">
+                        <span class="label">Status</span>
+                        <span class="value tag" id="status-tag">Resolved</span>
+                    </div>
+                </div>
+
+                <div class="card answer-card">
+                    <h3>Root Cause Analysis</h3>
+                    <div id="answer-text" class="markdown-body"></div>
+                </div>
+
+                <div class="grid-2">
+                    <div class="card reasoning-card">
+                        <h3>Agent Reasoning</h3>
+                        <div id="reasoning-text" class="text-sm"></div>
+                    </div>
+                    
+                    <div class="card fixes-card">
+                        <h3>Suggested Fixes</h3>
+                        <ul id="fixes-list" class="checklist"></ul>
+                    </div>
+                </div>
+
+                <div class="card sources-card">
+                    <h3>Data Sources</h3>
+                    <div id="sources-tags" class="tags-container"></div>
+                </div>
+
+                <div class="human-approval-box hidden" id="approval-box">
+                    <h3>⚠️ Human Approval Required</h3>
+                    <p>The agent paused execution and requires approval before proposing a postmortem.</p>
+                    <div class="action-buttons">
+                        <button class="btn btn-primary" id="approve-btn">Approve</button>
+                        <button class="btn btn-danger" id="reject-btn">Reject</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="error-state hidden" id="error-message">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--red)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <p id="error-text">An error occurred while analyzing the incident.</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
