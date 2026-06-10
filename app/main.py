@@ -36,6 +36,16 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 
+from fastapi.middleware.cors import CORSMiddleware
+
+# Enable CORS for the frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify the frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------------------------------------------------------------------------
 # Request / response models
