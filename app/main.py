@@ -18,25 +18,34 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.config import settings
     logger.info("Application startup...")
     
-    # Railway: If using a persistent volume at /data, it starts empty.
-    # We must copy the pre-seeded data from the Docker image into the volume.
-    data_dir = os.environ.get("DATA_DIR")
-    if data_dir and data_dir != ".":
-        logger.info(f"Checking if {data_dir} needs seeded data...")
-        if not os.path.exists(os.path.join(data_dir, "chroma_db")) and os.path.exists("chroma_db"):
-            logger.info("Copying seeded chroma_db to volume...")
-            shutil.copytree("chroma_db", os.path.join(data_dir, "chroma_db"))
+    # Railway: If the user attached a volume at /data, it starts completely empty.
+    # We must auto-detect it, redirect DATA_DIR to it, and seed it with the build-time data.
+    if os.path.exists("/data") and os.path.isdir("/data"):
+        logger.info("[startup] Detected persistent volume at /data. Redirecting DATA_DIR...")
+        os.environ["DATA_DIR"] = "/data"
+        settings.DATA_DIR = "/data"
         
-        if not os.path.exists(os.path.join(data_dir, "tree_index")) and os.path.exists("tree_index"):
-            logger.info("Copying seeded tree_index to volume...")
-            shutil.copytree("tree_index", os.path.join(data_dir, "tree_index"))
+        vol_chroma = "/data/chroma_db"
+        app_chroma = "./chroma_db"
+        
+        # If the persistent volume is empty, copy the pre-built knowledge base into it
+        if not os.path.exists(vol_chroma) and os.path.exists(app_chroma):
+            logger.info("[startup] Persistent volume is empty. Seeding with build-time Chroma database...")
+            shutil.copytree(app_chroma, vol_chroma)
+            logger.info("[startup] Database successfully seeded into volume.")
+            
+        vol_tree = "/data/tree_index"
+        app_tree = "./tree_index"
+        if not os.path.exists(vol_tree) and os.path.exists(app_tree):
+            shutil.copytree(app_tree, vol_tree)
 
     # Future: Cloud Run migration would add GCS snapshot restore here.
     
     # Ensure raw_documents directory exists
-    raw_docs_dir = os.path.join(os.environ.get("DATA_DIR", "."), "raw_documents")
+    raw_docs_dir = os.path.join(settings.DATA_DIR, "raw_documents")
     os.makedirs(raw_docs_dir, exist_ok=True)
     
     yield
