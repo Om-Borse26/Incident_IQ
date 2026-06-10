@@ -22,6 +22,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import TextLoader
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Paths & constants
@@ -198,6 +201,35 @@ def ingest_incidents() -> None:
     print(f"  Stored at : {CHROMA_DIR}")
     print("=" * 60)
 
+
+def ingest_single_document(content: str, filename: str) -> None:
+    """
+    Ingest a single document into ChromaDB.
+    Used by the POST /incident/ingest endpoint.
+    """
+    from langchain.docstore.document import Document
+    
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+        separators=["\n\n", "\n", " ", ""],
+    )
+    
+    meta = _extract_frontmatter(content, filename)
+    doc = Document(page_content=content, metadata=meta)
+    
+    chunks = splitter.create_documents([doc.page_content], metadatas=[meta])
+    
+    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
+    
+    # We instantiate Chroma pointing to the same directory
+    vectorstore = Chroma(
+        collection_name=COLLECTION_NAME,
+        persist_directory=str(CHROMA_DIR),
+        embedding_function=embeddings
+    )
+    vectorstore.add_documents(chunks)
+    logger.info(f"[ingest] Successfully ingested {filename} ({len(chunks)} chunks)")
 
 # ---------------------------------------------------------------------------
 # Entrypoint -- python -m services.retrieval.ingest

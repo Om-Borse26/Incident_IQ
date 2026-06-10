@@ -3,13 +3,16 @@ import os
 import shutil
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.llm.client import ask_llm, LLMError, LLMAllProvidersFailed
 from services.retrieval.search import search_incidents, SearchResult
 from services.retrieval.tree_search import tree_search, TreeSearchResult
 from services.agent.incident_graph import incident_graph
+from services.agent.validator import validate_postmortem
+from services.retrieval.ingest import ingest_single_document
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,11 @@ async def lifespan(app: FastAPI):
             shutil.copytree("tree_index", os.path.join(data_dir, "tree_index"))
 
     # Future: Cloud Run migration would add GCS snapshot restore here.
+    
+    # Ensure raw_documents directory exists
+    raw_docs_dir = os.path.join(os.environ.get("DATA_DIR", "."), "raw_documents")
+    os.makedirs(raw_docs_dir, exist_ok=True)
+    
     yield
     logger.info("Application shutdown...")
 
@@ -225,26 +233,25 @@ async def incident_search(body: IncidentSearchRequest) -> IncidentSearchResponse
     try:
         answer = ask_llm(prompt=body.query, system=system_prompt)
 
-        # Normal path — de-duplicate sources and return
+        # Build list of unique source titles for UI
         sources = _format_sources(chunks, include_text=False)
-        return IncidentSearchResponse(answer=answer, sources=sources, degraded=False)
 
-    except LLMAllProvidersFailed:
-        # Degraded path — all LLM providers are down / exhausted.
-        # Return the raw retrieved chunks so the engineer is never left empty-handed.
-        logger.warning(
-            "[incident/search] All LLM providers failed for query '%s'. "
-            "Returning degraded response with raw retrieved chunks.",
-            body.query,
-        )
-        sources = _format_sources(chunks, include_text=True)  # include chunk text in degraded mode
         return IncidentSearchResponse(
-            answer=(
-                "AI synthesis unavailable (all providers exhausted). "
-                "Showing the most relevant incident records directly:"
-            ),
+            answer=answer,
             sources=sources,
-            degraded=True,
+            degraded=False
+        )
+
+    except LLMAllProvidersFailed as exc:
+        logger.warning(
+            "All LLMs failed (%s). Falling back to returning raw chunks directly.", exc
+        )
+        sources = _format_sources(chunks, include_text=True)
+
+        return IncidentSearchResponse(
+            answer="**LLM Unreachable — Showing Raw Results:**\n\nAll AI providers are currently unavailable or rate-limited. We cannot synthesize an answer right now, but here are the raw incident records retrieved from the database:",
+            sources=sources,
+            degraded=True
         )
 
     except LLMError as exc:
@@ -291,6 +298,69 @@ async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSea
 
     except LLMError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.post("/incident/ingest")
+async def ingest_postmortem(file: UploadFile = File(...)):
+    """
+    Knowledge Ingestion Pipeline.
+    Uploads a postmortem document, validates it via LLM, 
+    and if valid, adds it to ChromaDB and saves the raw file for download.
+    """
+    # 1. Read file
+    content_bytes = await file.read()
+    try:
+        content = content_bytes.decode('utf-8')
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be a valid UTF-8 text or markdown file.")
+        
+    # 2. LLM Validation
+    validation = validate_postmortem(content)
+    if not validation.is_valid:
+        raise HTTPException(
+            status_code=422, 
+            detail=f"Document Rejected: {validation.reason}"
+        )
+        
+    # 3. Add to Vector DB
+    try:
+        ingest_single_document(content, file.filename)
+    except Exception as e:
+        logger.error(f"Failed to ingest to Chroma: {e}")
+        raise HTTPException(status_code=500, detail=f"Vector DB insertion failed: {e}")
+        
+    # 4. Save raw file for download
+    raw_docs_dir = os.path.join(os.environ.get("DATA_DIR", "."), "raw_documents")
+    file_path = os.path.join(raw_docs_dir, file.filename)
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(content)
+        
+    return {
+        "status": "success",
+        "message": f"Successfully ingested {file.filename}",
+        "validator_reason": validation.reason
+    }
+
+
+@app.get("/document/{filename}")
+async def download_document(filename: str):
+    """
+    Download a raw postmortem document.
+    """
+    # Look in the raw_documents persistent volume
+    raw_docs_dir = os.path.join(os.environ.get("DATA_DIR", "."), "raw_documents")
+    file_path = os.path.join(raw_docs_dir, filename)
+    
+    if os.path.exists(file_path):
+        return FileResponse(file_path, filename=filename)
+        
+    # Fallback to the pre-seeded data if not found in raw_documents
+    seeded_path = os.path.join(os.environ.get("DATA_DIR", "."), "data", "incidents", filename)
+    if os.path.exists(seeded_path):
+        return FileResponse(seeded_path, filename=filename)
+        
+    raise HTTPException(status_code=404, detail="Document not found")
 
 
 # ---------------------------------------------------------------------------

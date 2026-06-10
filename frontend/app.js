@@ -22,6 +22,66 @@ const fixesList = document.getElementById('fixes-list');
 const sourcesTags = document.getElementById('sources-tags');
 const approvalBox = document.getElementById('approval-box');
 
+// Upload DOM
+const openUploadBtn = document.getElementById('open-upload-btn');
+const closeUploadBtn = document.getElementById('close-upload-btn');
+const uploadModal = document.getElementById('upload-modal');
+const uploadForm = document.getElementById('upload-form');
+const uploadFile = document.getElementById('upload-file');
+const uploadBtn = document.getElementById('upload-btn');
+const uploadStatus = document.getElementById('upload-status');
+
+// Upload Event Listeners
+openUploadBtn.addEventListener('click', () => {
+    uploadModal.classList.remove('hidden');
+    uploadStatus.classList.add('hidden');
+    uploadForm.reset();
+});
+
+closeUploadBtn.addEventListener('click', () => {
+    uploadModal.classList.add('hidden');
+});
+
+uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = uploadFile.files[0];
+    if (!file) return;
+
+    uploadBtn.disabled = true;
+    uploadBtn.textContent = 'Validating & Ingesting...';
+    uploadStatus.classList.add('hidden');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/incident/ingest`, {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            uploadStatus.textContent = `✅ Success: ${data.message}`;
+            uploadStatus.style.color = 'var(--success)';
+            uploadStatus.classList.remove('hidden');
+            setTimeout(() => { uploadModal.classList.add('hidden'); }, 2000);
+        } else {
+            uploadStatus.textContent = `❌ Failed: ${data.detail || 'Unknown error'}`;
+            uploadStatus.style.color = 'var(--red)';
+            uploadStatus.classList.remove('hidden');
+        }
+    } catch (err) {
+        uploadStatus.textContent = `❌ Network Error: Could not connect to backend.`;
+        uploadStatus.style.color = 'var(--red)';
+        uploadStatus.classList.remove('hidden');
+    } finally {
+        uploadBtn.disabled = false;
+        uploadBtn.textContent = 'Upload & Validate';
+    }
+});
+
 let currentSessionId = null;
 let loadingInterval = null;
 
@@ -124,10 +184,22 @@ function renderResult(data) {
     sourcesTags.innerHTML = '';
     if (data.sources && data.sources.length > 0) {
         data.sources.forEach(src => {
-            const span = document.createElement('span');
-            span.className = 'source-tag';
-            span.textContent = src;
-            sourcesTags.appendChild(span);
+            const a = document.createElement('a');
+            a.className = 'source-tag';
+            a.textContent = src;
+            // The source usually looks like "INC-0041: ... (filename.md)"
+            // Let's try to extract the filename if it's in parentheses
+            const match = src.match(/\((.*?\.md)\)/);
+            if (match && match[1]) {
+                a.href = `${API_BASE_URL}/document/${match[1]}`;
+                a.target = '_blank';
+                a.title = 'Click to download raw postmortem';
+                a.style.textDecoration = 'none';
+                a.style.cursor = 'pointer';
+            } else {
+                a.style.cursor = 'default';
+            }
+            sourcesTags.appendChild(a);
         });
     } else {
         sourcesTags.innerHTML = '<span class="source-tag">No sources used</span>';
