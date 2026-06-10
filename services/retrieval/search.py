@@ -113,7 +113,7 @@ def _get_collection() -> chromadb.Collection:
             path=chroma_path,
             settings=chromadb.Settings(anonymized_telemetry=False),
         )
-        _collection = client.get_collection(COLLECTION_NAME)
+        _collection = client.get_or_create_collection(COLLECTION_NAME)
     return _collection
 
 
@@ -164,9 +164,13 @@ def search_incidents(query: str, k: int = 4) -> list[SearchResult]:
 
     # 2. Similarity search against the ChromaDB collection
     collection = _get_collection()
+    count = collection.count()
+    if count == 0:
+        return []
+        
     raw = collection.query(
         query_embeddings=[query_vector],
-        n_results=min(k, collection.count()),   # guard: can't request more than stored
+        n_results=min(k, count),   # guard: can't request more than stored
         include=["documents", "metadatas", "distances"],
     )
 
