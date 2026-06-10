@@ -102,6 +102,13 @@ class AnalyzeResponse(BaseModel):
 # Routes
 # ---------------------------------------------------------------------------
 
+from cachetools import TTLCache
+import hashlib
+
+# Cache completed analyses for 1 hour to ensure fast responses for identical queries
+# keyed by the hash of the lowercase query string
+QUERY_CACHE = TTLCache(maxsize=100, ttl=3600)
+
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "incidentiq"}
@@ -138,6 +145,17 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             "session_id": session_id
         }
     }
+    
+    query_text = body.query.strip().lower()
+    query_hash = hashlib.md5(query_text.encode('utf-8')).hexdigest()
+    
+    # 1. Cache Check (Only if we are NOT resuming a paused graph)
+    if not body.resume_action and query_hash in QUERY_CACHE:
+        logger.info(f"[analyze] CACHE HIT for query: '{body.query}'. Returning instant response.")
+        cached_res = QUERY_CACHE[query_hash]
+        # Generate a new session ID for the cached response so it doesn't collide
+        cached_res.session_id = session_id
+        return cached_res
     
     query_text = body.query
     if body.context:
@@ -182,7 +200,7 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             except Exception as e:
                 logger.error(f"[analyze] Failed to auto-ingest postmortem: {e}")
                 
-        return AnalyzeResponse(
+        response = AnalyzeResponse(
             mode=current_state.get("mode", "unknown"),
             confidence=current_state.get("confidence", 0.0),
             answer=answer,
@@ -195,6 +213,12 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
             status=status,
             generated_postmortem_path=generated_path
         )
+        
+        # Cache successful full runs
+        if status == "completed":
+            QUERY_CACHE[query_hash] = response
+            
+        return response
     except Exception as exc:
         logger.exception("[incident/analyze] Graph completely failed")
         
