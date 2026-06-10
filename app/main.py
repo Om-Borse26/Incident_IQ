@@ -48,29 +48,6 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
-from fastapi import Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.config import settings
-
-security = HTTPBearer()
-
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    if credentials.credentials != settings.API_TOKEN:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return credentials.credentials
-
-@app.get("/auth/verify")
-async def verify_auth(token: str = Depends(verify_token)):
-    """Simple endpoint for the frontend to verify if a passcode is correct."""
-    return {"status": "ok", "message": "Authenticated"}
-
-# ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
 
@@ -122,7 +99,7 @@ async def health_check():
 
 
 @app.post("/ask", response_model=AskResponse)
-async def ask(body: AskRequest, token: str = Depends(verify_token)) -> AskResponse:
+async def ask(body: AskRequest) -> AskResponse:
     """Send a question to the configured LLM and return its answer."""
     try:
         answer = ask_llm(prompt=body.question)
@@ -136,7 +113,7 @@ async def ask(body: AskRequest, token: str = Depends(verify_token)) -> AskRespon
 
 
 @app.post("/incident/analyze", response_model=AnalyzeResponse)
-async def incident_analyze(body: AnalyzeRequest, token: str = Depends(verify_token)) -> AnalyzeResponse:
+async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
     """
     Agentic endpoint (Phase 5) — Uses LangGraph for explicit state and orchestration.
     """
@@ -217,7 +194,7 @@ async def incident_analyze(body: AnalyzeRequest, token: str = Depends(verify_tok
 
 
 @app.post("/incident/search", response_model=IncidentSearchResponse)
-async def incident_search(body: IncidentSearchRequest, token: str = Depends(verify_token)) -> IncidentSearchResponse:
+async def incident_search(body: IncidentSearchRequest) -> IncidentSearchResponse:
     """
     RAG endpoint — Retrieve, Augment, Generate with graceful degradation.
 

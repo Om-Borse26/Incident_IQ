@@ -70,54 +70,6 @@ body {
     100% { transform: translate(30px, 50px) scale(1.1); }
 }
 
-/* Auth Overlay */
-.auth-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(15, 23, 42, 0.8);
-    backdrop-filter: blur(8px);
-    z-index: 1000;
-}
-
-.auth-card {
-    max-width: 400px;
-    width: 90%;
-    text-align: left;
-}
-
-.auth-card h2 {
-    color: #fff;
-    margin-bottom: 0.5rem;
-}
-
-.auth-card p {
-    color: var(--text-muted);
-    font-size: 0.9rem;
-    margin-bottom: 1.5rem;
-}
-
-#auth-input {
-    width: 100%;
-    background: rgba(0,0,0,0.2);
-    border: 1px solid var(--border-glass);
-    color: #fff;
-    padding: 0.75rem;
-    border-radius: 8px;
-    font-size: 1rem;
-    outline: none;
-    transition: all 0.2s;
-}
-
-#auth-input:focus {
-    border-color: var(--primary);
-}
-
 /* Layout */
 .app-container {
     max-width: 900px;
