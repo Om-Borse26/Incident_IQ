@@ -31,28 +31,43 @@ const uploadFile = document.getElementById('upload-file');
 const uploadBtn = document.getElementById('upload-btn');
 const uploadStatus = document.getElementById('upload-status');
 
+// Tab Switching Logic
+const tabBtns = document.querySelectorAll('.tab-btn');
+const tabPanes = document.querySelectorAll('.tab-pane');
+
+tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+        // Remove active class from all
+        tabBtns.forEach(b => b.classList.remove('active'));
+        tabPanes.forEach(p => p.classList.remove('active'));
+        
+        // Add active class to clicked
+        btn.classList.add('active');
+        const tabId = btn.getAttribute('data-tab');
+        document.getElementById(tabId).classList.add('active');
+        
+        // Reset status
+        uploadStatus.classList.add('hidden');
+    });
+});
+
 // Upload Event Listeners
 openUploadBtn.addEventListener('click', () => {
     uploadModal.classList.remove('hidden');
     uploadStatus.classList.add('hidden');
     uploadForm.reset();
+    document.getElementById('manual-form').reset();
 });
 
 closeUploadBtn.addEventListener('click', () => {
     uploadModal.classList.add('hidden');
 });
 
-uploadForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const file = uploadFile.files[0];
-    if (!file) return;
-
-    uploadBtn.disabled = true;
-    uploadBtn.textContent = 'Validating & Ingesting...';
+// Helper for ingestion API call
+async function submitIngestion(formData, submitBtn, originalText) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Validating & Ingesting...';
     uploadStatus.classList.add('hidden');
-
-    const formData = new FormData();
-    formData.append('file', file);
 
     try {
         const response = await fetch(`${API_BASE_URL}/incident/ingest`, {
@@ -77,9 +92,51 @@ uploadForm.addEventListener('submit', async (e) => {
         uploadStatus.style.color = 'var(--red)';
         uploadStatus.classList.remove('hidden');
     } finally {
-        uploadBtn.disabled = false;
-        uploadBtn.textContent = 'Upload & Validate';
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
     }
+}
+
+// File Upload Submit
+uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = uploadFile.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    await submitIngestion(formData, uploadBtn, 'Upload & Validate');
+});
+
+// Manual Form Submit
+document.getElementById('manual-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = document.getElementById('manual-title').value.trim();
+    const service = document.getElementById('manual-service').value.trim();
+    const symptoms = document.getElementById('manual-symptoms').value.trim();
+    const fix = document.getElementById('manual-fix').value.trim();
+
+    // Format as Markdown
+    const markdownContent = `# ${title}
+**Affected Service:** ${service}
+
+## Symptoms
+${symptoms}
+
+## Fix / Resolution
+${fix}
+`;
+
+    // Create a Blob file
+    const safeTitle = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const blob = new Blob([markdownContent], { type: 'text/markdown' });
+    const file = new File([blob], `${safeTitle}.md`, { type: 'text/markdown' });
+
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const manualBtn = document.getElementById('manual-btn');
+    await submitIngestion(formData, manualBtn, 'Submit & Validate');
 });
 
 let currentSessionId = null;

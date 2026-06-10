@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     # Server Configuration
     # ------------------------------------------------------------------
     PORT: int = 8080
-    API_TOKEN: str = "super-secret-key"  # Used for simple AuthN
+    API_TOKEN: str = "super-secret-key"
+    GROQ_VALIDATOR_API_KEY: str | None = None  # Used for simple AuthN
 
     # ------------------------------------------------------------------
     # Data directories — platform-agnostic path abstraction.

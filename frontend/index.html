@@ -38,11 +38,42 @@
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
                 <h2><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg> Knowledge Ingestion</h2>
-                <p>Upload a past incident postmortem. The AI will validate it for symptoms and fixes before adding it to the database.</p>
-                <form id="upload-form">
-                    <input type="file" id="upload-file" accept=".md,.txt" required style="width: 100%; margin-bottom: 1rem; color: #fff;">
-                    <button type="submit" class="btn btn-primary" id="upload-btn" style="width: 100%;">Upload & Validate</button>
-                </form>
+                <p>Add a past incident to the database. The AI will validate it for symptoms and fixes, and deduplicate it.</p>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="upload-tab">Upload File</button>
+                    <button class="tab-btn" data-tab="manual-tab">Write Manually</button>
+                </div>
+
+                <div id="upload-tab" class="tab-pane active">
+                    <form id="upload-form">
+                        <input type="file" id="upload-file" accept=".md,.txt" required style="width: 100%; margin-bottom: 1rem; color: #fff;">
+                        <button type="submit" class="btn btn-primary" id="upload-btn" style="width: 100%;">Upload & Validate</button>
+                    </form>
+                </div>
+
+                <div id="manual-tab" class="tab-pane">
+                    <form id="manual-form">
+                        <div class="form-group">
+                            <label>Incident Title</label>
+                            <input type="text" id="manual-title" placeholder="e.g. Database Connection Timeout" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Affected Service</label>
+                            <input type="text" id="manual-service" placeholder="e.g. checkout-service" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Symptoms / Errors</label>
+                            <textarea id="manual-symptoms" rows="3" placeholder="What went wrong? e.g. HTTP 500 errors" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Fix / Resolution</label>
+                            <textarea id="manual-fix" rows="3" placeholder="How was it solved? e.g. Increased connection pool size" required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="manual-btn" style="width: 100%;">Submit & Validate</button>
+                    </form>
+                </div>
+
                 <div id="upload-status" class="hidden" style="margin-top: 1rem; text-align: center; font-size: 0.875rem;"></div>
             </div>
         </div>

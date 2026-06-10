@@ -356,7 +356,7 @@ async def download_document(filename: str):
         return FileResponse(file_path, filename=filename)
         
     # Fallback to the pre-seeded data if not found in raw_documents
-    seeded_path = os.path.join(os.environ.get("DATA_DIR", "."), "data", "incidents", filename)
+    seeded_path = os.path.join("data", "incidents", filename)
     if os.path.exists(seeded_path):
         return FileResponse(seeded_path, filename=filename)
         
