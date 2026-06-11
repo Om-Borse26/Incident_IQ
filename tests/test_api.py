@@ -27,18 +27,18 @@ def test_auth_gate(mock_get_chat_model, auth_headers):
     mock_get_chat_model.return_value = mock_llm
 
     # Without token
-    response = client.post("/ask", json={"query": "hello"})
+    response = client.post("/incident/analyze", json={"query": "hello"})
     assert response.status_code == 401
 
     # With token (should process the request and not be 401)
-    response = client.post("/ask", json={"query": "hello"}, headers=auth_headers)
+    response = client.post("/incident/analyze", json={"query": "hello"}, headers=auth_headers)
     assert response.status_code == 200
 
 # b) /health returns {"status": "ok"} (catches startup/import crashes)
 def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "ok", "service": "incidentiq"}
 
 # c) "hello" query -> mode response doesn't invoke retrieve_node (chitchat routing)
 @patch("services.agent.incident_graph.get_chat_model")
@@ -51,7 +51,7 @@ def test_chitchat_routing(mock_search, mock_get_chat_model, auth_headers):
     mock_llm.invoke.return_value.content = "Hello there! How can I help?"
     mock_get_chat_model.return_value = mock_llm
 
-    response = client.post("/ask", json={"query": "hello"}, headers=auth_headers)
+    response = client.post("/incident/analyze", json={"query": "hello"}, headers=auth_headers)
     assert response.status_code == 200
     
     data = response.json()
@@ -76,7 +76,7 @@ def test_known_incident_query(mock_search, mock_get_chat_model, auth_headers):
     mock_llm.invoke.return_value.content = "I found the issue, restart the container."
     mock_get_chat_model.return_value = mock_llm
 
-    response = client.post("/ask", json={"query": "how to fix the database?"}, headers=auth_headers)
+    response = client.post("/incident/analyze", json={"query": "how to fix the database?"}, headers=auth_headers)
     assert response.status_code == 200
     
     data = response.json()
@@ -118,7 +118,7 @@ def test_rate_limiting():
     # Let's send 11 unauthenticated requests to a rate limited endpoint
     # Wait, /ask limits are 10/minute
     for _ in range(11):
-        response = client.post("/ask", json={"query": "spam"})
+        response = client.post("/incident/analyze", json={"query": "spam"})
         if response.status_code == 429:
             break
             
