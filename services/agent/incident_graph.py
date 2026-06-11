@@ -50,7 +50,7 @@ class IncidentState(TypedDict):
 # ---------------------------------------------------------------------------
 
 class QueryClassification(BaseModel):
-    query_type: str = Field(description="'live' if the query implies an ongoing/current issue, 'historical' if it asks about past incidents, 'unknown' otherwise")
+    query_type: str = Field(description="'live' if the query implies an ongoing/current issue, 'historical' if it asks about past incidents, 'chitchat' if the query is a general question, greeting, or off-topic, 'unknown' otherwise")
 
 async def classify_node(state: IncidentState) -> dict:
     """Is this a live incident or a historical/analysis query?"""
@@ -63,6 +63,36 @@ async def classify_node(state: IncidentState) -> dict:
     except Exception as e:
         logger.error(f"[graph] classify_node failed: {e}")
         return {"query_type": "historical"} # Default to historical if it fails
+
+
+async def chitchat_node(state: IncidentState) -> dict:
+    """Handle general questions, greetings, and off-topic queries dynamically."""
+    logger.info("[graph] chitchat_node executing...")
+    llm = get_chat_model()
+    
+    prompt = f"""You are IncidentIQ, an AI reliability engineer. 
+The user asked a general question or greeting that does not require searching the incident database.
+Answer the question helpfully and conversationally based on your general knowledge.
+
+User Query: {state['query']}
+"""
+    try:
+        res = llm.invoke(prompt)
+        answer = res.content
+    except Exception as e:
+        logger.error(f"[graph] chitchat_node LLM failed: {e}")
+        answer = "Hi! I'm IncidentIQ, your AI reliability engineer. I'm currently having trouble connecting to my brain, but I'm here to help with production incidents!"
+
+    return {
+        "answer": answer,
+        "mode": "known",
+        "confidence": 1.0,
+        "reasoning": "Answered using general knowledge.",
+        "suggested_fixes": [],
+        "sources": [],
+        "diagnostics_available": False,
+        "needs_postmortem": False
+    }
 
 
 class ServiceExtraction(BaseModel):
@@ -326,7 +356,10 @@ def respond_node(state: IncidentState) -> dict:
 
 def route_after_classify(state: IncidentState) -> List[str]:
     """Deterministic routing based on explicit state rather than LLM reasoning."""
-    if state.get("query_type") == "live":
+    q_type = state.get("query_type")
+    if q_type == "chitchat":
+        return ["chitchat_node"]
+    if q_type == "live":
         # Parallel execution: run both diagnostics and retrieval
         return ["diagnose_node", "retrieve_node"]
     # Historical query: only run retrieval
@@ -358,6 +391,7 @@ def build_incident_graph():
 
     # Add nodes
     workflow.add_node("classify_node", classify_node)
+    workflow.add_node("chitchat_node", chitchat_node)
     workflow.add_node("diagnose_node", diagnose_node)
     workflow.add_node("retrieve_node", retrieve_node)
     workflow.add_node("reason_node", reason_node)
@@ -369,6 +403,7 @@ def build_incident_graph():
     workflow.add_edge(START, "classify_node")
     
     workflow.add_conditional_edges("classify_node", route_after_classify)
+    workflow.add_edge("chitchat_node", "respond_node")
     
     workflow.add_edge("diagnose_node", "reason_node")
     workflow.add_edge("retrieve_node", "reason_node")

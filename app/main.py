@@ -54,11 +54,31 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import asyncio
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import uuid
+    error_id = str(uuid.uuid4())
+    logger.error(f"Unhandled exception (ID: {error_id}): {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal Server Error", "request_id": error_id}
+    )
 
 # Enable CORS for the frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify the frontend domain
+    allow_origins=["https://incident-iq-weld.vercel.app", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -124,7 +144,8 @@ async def health_check():
 
 
 @app.post("/ask", response_model=AskResponse)
-async def ask(body: AskRequest) -> AskResponse:
+@limiter.limit("10/minute")
+async def ask(request: Request, body: AskRequest) -> AskResponse:
     """Send a question to the configured LLM and return its answer."""
     try:
         answer = ask_llm(prompt=body.question)
@@ -138,7 +159,8 @@ async def ask(body: AskRequest) -> AskResponse:
 
 
 @app.post("/incident/analyze", response_model=AnalyzeResponse)
-async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
+@limiter.limit("10/minute")
+async def incident_analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
     """
     Agentic endpoint (Phase 5) — Uses LangGraph for explicit state and orchestration.
     """
@@ -171,21 +193,40 @@ async def incident_analyze(body: AnalyzeRequest) -> AnalyzeResponse:
         query_text = f"{body.context}\n\nQuestion: {body.query}"
         
     try:
-        if body.resume_action:
-            logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
-            stream = incident_graph.astream(Command(resume={"action": body.resume_action}), config)
-        else:
-            initial_state = {"query": query_text, "context": body.context or ""}
-            stream = incident_graph.astream(initial_state, config)
-            
-        status = "completed"
-        async for event in stream:
-            for node_name, node_state in event.items():
-                if node_name == "__interrupt__":
-                    logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
-                    status = "pending_approval"
-                    continue
-                logger.info(f"[analyze] Node completed: {node_name}")
+        async def run_graph():
+            if body.resume_action:
+                logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
+                stream = incident_graph.astream(Command(resume={"action": body.resume_action}), config)
+            else:
+                initial_state = {"query": query_text, "context": body.context or ""}
+                stream = incident_graph.astream(initial_state, config)
+                
+            run_status = "completed"
+            async for event in stream:
+                for node_name, node_state in event.items():
+                    if node_name == "__interrupt__":
+                        logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
+                        run_status = "pending_approval"
+                        continue
+                    logger.info(f"[analyze] Node completed: {node_name}")
+            return run_status
+
+        try:
+            status = await asyncio.wait_for(run_graph(), timeout=55.0)
+        except asyncio.TimeoutError:
+            logger.error(f"[analyze] Timeout for session {session_id}")
+            return AnalyzeResponse(
+                mode="unknown",
+                confidence=0.0,
+                answer="The analysis took too long and timed out. Please try a simpler query or check the system later.",
+                sources=[],
+                reasoning="Timeout exceeded 55 seconds.",
+                suggested_fixes=[],
+                diagnostics_available=False,
+                degraded=True,
+                session_id=session_id,
+                status="error"
+            )
                 
         # Fetch final state from memory checkpointer
         current_state = incident_graph.get_state(config).values
@@ -351,7 +392,8 @@ async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSea
 
 
 @app.post("/incident/ingest")
-async def ingest_postmortem(file: UploadFile = File(...)):
+@limiter.limit("5/minute")
+async def ingest_postmortem(request: Request, file: UploadFile = File(...)):
     """
     Knowledge Ingestion Pipeline.
     Uploads a postmortem document, validates it via LLM, 
@@ -385,6 +427,9 @@ async def ingest_postmortem(file: UploadFile = File(...)):
     
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
+        
+    # 5. Invalidate the semantic cache since new knowledge was added
+    QUERY_CACHE.clear()
         
     return {
         "status": "success",
