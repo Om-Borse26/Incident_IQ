@@ -46,9 +46,8 @@ pipeline {
                             '''
                         } else {
                             bat '''
-                                call "d:\\02_Interests (Up Skilling )\\05_LLM, RAG, Agents, MCP and more\\Project - Incident_IQ\\venv\\Scripts\\activate.bat"
                                 set PYTHONPATH=.
-                                pytest tests/test_api.py -v
+                                "d:\\02_Interests (Up Skilling )\\05_LLM, RAG, Agents, MCP and more\\Project - Incident_IQ\\venv\\Scripts\\python.exe" -m pytest tests/test_api.py -v
                             '''
                         }
                     }
@@ -90,7 +89,7 @@ pipeline {
                                 call npm i -g @railway/cli
                                 
                                 echo "Triggering Railway deployment..."
-                                railway up --detach
+                                call npx @railway/cli up --detach
                             '''
                         }
                     }
@@ -124,7 +123,7 @@ pipeline {
                             echo "Running health check against live production..."
                             curl --fail -s https://incidentiq-production-b6f3.up.railway.app/health || (
                                 echo "HEALTH CHECK FAILED! Production deployment is unreachable or broken."
-                                exit 1
+                                exit /b 1
                             )
                             echo "Health check passed. Deployment verified."
                         '''
