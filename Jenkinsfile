@@ -56,11 +56,14 @@ pipeline {
             }
             steps {
                 withCredentials([
-                    string(credentialsId: 'RAILWAY_WEBHOOK', variable: 'RAILWAY_WEBHOOK_URL')
+                    string(credentialsId: 'RAILWAY_TOKEN', variable: 'RAILWAY_TOKEN')
                 ]) {
                     sh '''
-                        echo "Triggering Railway deployment via Webhook..."
-                        curl -X POST $RAILWAY_WEBHOOK_URL
+                        echo "Installing Railway CLI..."
+                        curl -fsSL cli.new | sh
+                        
+                        echo "Triggering Railway deployment..."
+                        railway up --detach
                     '''
                 }
             }
