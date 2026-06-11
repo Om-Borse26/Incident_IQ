@@ -110,7 +110,7 @@ pipeline {
                     } else {
                         bat '''
                             echo "Waiting 30 seconds for Railway container to build and start..."
-                            timeout /t 30
+                            ping 127.0.0.1 -n 31 > nul
                             
                             echo "Running health check against live production..."
                             curl --fail -s https://incidentiq-production-b6f3.up.railway.app/health || (
