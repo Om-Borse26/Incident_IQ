@@ -55,13 +55,28 @@ app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from fastapi import Request
 from fastapi.responses import JSONResponse
 import asyncio
 
-limiter = Limiter(key_func=get_remote_address)
+def get_token_or_ip(request: Request) -> str:
+    # 1. Rate limit by the API Token if provided
+    auth = request.headers.get("Authorization")
+    if auth and auth.startswith("Bearer "):
+        return auth.split(" ")[1]
+    
+    # 2. Fallback to real client IP from proxy (Railway)
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+        
+    # 3. Final fallback to direct connection IP
+    if request.client:
+        return request.client.host
+    return "127.0.0.1"
+
+limiter = Limiter(key_func=get_token_or_ip)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
