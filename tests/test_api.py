@@ -40,15 +40,22 @@ def test_chitchat_routing(mock_search, mock_get_chat_model):
     # Ensure search was never called (retrieve_node was skipped)
     mock_search.assert_not_called()
 
+from services.retrieval.search import SearchResult
+
 # d) Known incident query -> returns mode:"known" (RAG pipeline works)
 @patch("services.agent.incident_graph.get_chat_model")
 @patch("services.retrieval.search.search_incidents")
 def test_known_incident_query(mock_search, mock_get_chat_model):
-    # Mock search to return dummy chunks
-    mock_chunk = MagicMock()
-    mock_chunk.page_content = "The fix was to restart the container."
-    mock_chunk.metadata = {"source": "fake_incident.md"}
-    mock_search.return_value = [mock_chunk]
+    # Mock search to return proper SearchResult objects
+    mock_search.return_value = [
+        SearchResult(
+            text="The fix was to restart the container.",
+            source="fake_incident.md",
+            incident_title="Fake Incident",
+            service="fake-service",
+            distance=0.1
+        )
+    ]
 
     mock_llm = MagicMock()
     # First call is router. Return "historical"
