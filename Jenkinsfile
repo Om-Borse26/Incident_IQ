@@ -16,11 +16,21 @@ pipeline {
 
         stage('Setup Environment') {
             steps {
-                sh '''
-                    python3 -m venv venv
-                    . venv/bin/activate
-                    pip install -r requirements.txt
-                '''
+                script {
+                    if (isUnix()) {
+                        sh '''
+                            python3 -m venv venv
+                            . venv/bin/activate
+                            pip install -r requirements.txt
+                        '''
+                    } else {
+                        bat '''
+                            python -m venv venv
+                            call venv\\Scripts\\activate.bat
+                            python -m pip install -r requirements.txt
+                        '''
+                    }
+                }
             }
         }
 
@@ -31,10 +41,20 @@ pipeline {
                     string(credentialsId: 'GEMINI_API_KEY', variable: 'GEMINI_API_KEY'),
                     string(credentialsId: 'LANGCHAIN_API_KEY', variable: 'LANGCHAIN_API_KEY')
                 ]) {
-                    sh '''
-                        . venv/bin/activate
-                        pytest tests/test_api.py -v
-                    '''
+                    script {
+                        if (isUnix()) {
+                            sh '''
+                                . venv/bin/activate
+                                pytest tests/test_api.py -v
+                            '''
+                        } else {
+                            bat '''
+                                call venv\\Scripts\\activate.bat
+                                set PYTHONPATH=.
+                                pytest tests/test_api.py -v
+                            '''
+                        }
+                    }
                 }
             }
         }
@@ -58,13 +78,25 @@ pipeline {
                 withCredentials([
                     string(credentialsId: 'RAILWAY_TOKEN', variable: 'RAILWAY_TOKEN')
                 ]) {
-                    sh '''
-                        echo "Installing Railway CLI..."
-                        curl -fsSL cli.new | sh
-                        
-                        echo "Triggering Railway deployment..."
-                        railway up --detach
-                    '''
+                    script {
+                        if (isUnix()) {
+                            sh '''
+                                echo "Installing Railway CLI..."
+                                curl -fsSL cli.new | sh
+                                
+                                echo "Triggering Railway deployment..."
+                                railway up --detach
+                            '''
+                        } else {
+                            bat '''
+                                echo "Installing Railway CLI..."
+                                call npm i -g @railway/cli
+                                
+                                echo "Triggering Railway deployment..."
+                                railway up --detach
+                            '''
+                        }
+                    }
                 }
             }
         }
@@ -74,17 +106,33 @@ pipeline {
                 branch 'main'
             }
             steps {
-                sh '''
-                    echo "Waiting 30 seconds for Railway container to build and start..."
-                    sleep 30
-                    
-                    echo "Running health check against live production..."
-                    curl --fail -s https://incidentiq-production-b6f3.up.railway.app/health || {
-                        echo "HEALTH CHECK FAILED! Production deployment is unreachable or broken."
-                        exit 1
+                script {
+                    if (isUnix()) {
+                        sh '''
+                            echo "Waiting 30 seconds for Railway container to build and start..."
+                            sleep 30
+                            
+                            echo "Running health check against live production..."
+                            curl --fail -s https://incidentiq-production-b6f3.up.railway.app/health || {
+                                echo "HEALTH CHECK FAILED! Production deployment is unreachable or broken."
+                                exit 1
+                            }
+                            echo "Health check passed. Deployment verified."
+                        '''
+                    } else {
+                        bat '''
+                            echo "Waiting 30 seconds for Railway container to build and start..."
+                            timeout /t 30
+                            
+                            echo "Running health check against live production..."
+                            curl --fail -s https://incidentiq-production-b6f3.up.railway.app/health || (
+                                echo "HEALTH CHECK FAILED! Production deployment is unreachable or broken."
+                                exit 1
+                            )
+                            echo "Health check passed. Deployment verified."
+                        '''
                     }
-                    echo "Health check passed. Deployment verified."
-                '''
+                }
             }
         }
     }
