@@ -56,7 +56,7 @@ app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from fastapi import Request
+from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 import asyncio
 
@@ -64,17 +64,21 @@ def get_token_or_ip(request: Request) -> str:
     # 1. Rate limit by the API Token if provided
     auth = request.headers.get("Authorization")
     if auth and auth.startswith("Bearer "):
-        return auth.split(" ")[1]
+        key = auth.split(" ")[1]
+        logger.info(f"[rate_limit] Using API token as key: {key}")
+        return key
     
     # 2. Fallback to real client IP from proxy (Railway)
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        key = forwarded.split(",")[0].strip()
+        logger.info(f"[rate_limit] Using X-Forwarded-For as key: {key}")
+        return key
         
     # 3. Final fallback to direct connection IP
-    if request.client:
-        return request.client.host
-    return "127.0.0.1"
+    key = request.client.host if request.client else "127.0.0.1"
+    logger.info(f"[rate_limit] Using fallback client host as key: {key}")
+    return key
 
 limiter = Limiter(key_func=get_token_or_ip)
 app.state.limiter = limiter
@@ -160,7 +164,7 @@ async def health_check():
 
 @app.post("/ask", response_model=AskResponse)
 @limiter.limit("10/minute")
-async def ask(request: Request, body: AskRequest) -> AskResponse:
+async def ask(request: Request, response: Response, body: AskRequest) -> AskResponse:
     """Send a question to the configured LLM and return its answer."""
     try:
         answer = ask_llm(prompt=body.question)
@@ -175,7 +179,7 @@ async def ask(request: Request, body: AskRequest) -> AskResponse:
 
 @app.post("/incident/analyze", response_model=AnalyzeResponse)
 @limiter.limit("10/minute")
-async def incident_analyze(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
+async def incident_analyze(request: Request, response: Response, body: AnalyzeRequest) -> AnalyzeResponse:
     """
     Agentic endpoint (Phase 5) — Uses LangGraph for explicit state and orchestration.
     """
@@ -408,7 +412,7 @@ async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSea
 
 @app.post("/incident/ingest")
 @limiter.limit("5/minute")
-async def ingest_postmortem(request: Request, file: UploadFile = File(...)):
+async def ingest_postmortem(request: Request, response: Response, file: UploadFile = File(...)):
     """
     Knowledge Ingestion Pipeline.
     Uploads a postmortem document, validates it via LLM, 
