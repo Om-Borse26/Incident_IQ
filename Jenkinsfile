@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         // Environment variables for testing locally inside Jenkins
-        AUTH_TOKEN = 'super-secret-key'
         APP_ENV = 'test'
     }
 
@@ -25,9 +24,7 @@ pipeline {
                         '''
                     } else {
                         bat '''
-                            python -m venv venv
-                            call venv\\Scripts\\activate.bat
-                            python -m pip install -r requirements.txt
+                            echo "Using existing local venv to save time..."
                         '''
                     }
                 }
@@ -49,7 +46,7 @@ pipeline {
                             '''
                         } else {
                             bat '''
-                                call venv\\Scripts\\activate.bat
+                                call "d:\\02_Interests (Up Skilling )\\05_LLM, RAG, Agents, MCP and more\\Project - Incident_IQ\\venv\\Scripts\\activate.bat"
                                 set PYTHONPATH=.
                                 pytest tests/test_api.py -v
                             '''

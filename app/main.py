@@ -61,14 +61,7 @@ from fastapi.responses import JSONResponse
 import asyncio
 
 def get_token_or_ip(request: Request) -> str:
-    # 1. Rate limit by the API Token if provided
-    auth = request.headers.get("Authorization")
-    if auth and auth.startswith("Bearer "):
-        key = auth.split(" ")[1]
-        logger.info(f"[rate_limit] Using API token as key: {key}")
-        return key
-    
-    # 2. Fallback to real client IP from proxy (Railway)
+    # 1. Fallback to real client IP from proxy (Railway)
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         key = forwarded.split(",")[0].strip()
