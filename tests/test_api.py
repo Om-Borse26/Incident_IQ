@@ -18,13 +18,15 @@ def test_health_check():
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "incidentiq"}
 
+from services.agent.incident_graph import QueryClassification
+
 # c) "hello" query -> mode response doesn't invoke retrieve_node (chitchat routing)
 @patch("services.agent.incident_graph.get_chat_model")
 @patch("services.retrieval.search.search_incidents") # Prevent DB interaction
 def test_chitchat_routing(mock_search, mock_get_chat_model):
     mock_llm = MagicMock()
     # First call is router (with_structured_output). Return "chitchat" type
-    mock_llm.with_structured_output.return_value.invoke.return_value = {"type": "chitchat"}
+    mock_llm.with_structured_output.return_value.invoke.return_value = QueryClassification(query_type="chitchat")
     # Second call is the actual generation
     mock_llm.invoke.return_value.content = "Hello there! How can I help?"
     mock_get_chat_model.return_value = mock_llm
@@ -33,7 +35,8 @@ def test_chitchat_routing(mock_search, mock_get_chat_model):
     assert response.status_code == 200
     
     data = response.json()
-    assert data["mode"] == "chitchat"
+    assert data["mode"] == "known"
+    assert data["answer"] == "Hello there! How can I help?"
     # Ensure search was never called (retrieve_node was skipped)
     mock_search.assert_not_called()
 
@@ -49,7 +52,7 @@ def test_known_incident_query(mock_search, mock_get_chat_model):
 
     mock_llm = MagicMock()
     # First call is router. Return "historical"
-    mock_llm.with_structured_output.return_value.invoke.return_value = {"type": "historical"}
+    mock_llm.with_structured_output.return_value.invoke.return_value = QueryClassification(query_type="historical")
     # Second call is the generation
     mock_llm.invoke.return_value.content = "I found the issue, restart the container."
     mock_get_chat_model.return_value = mock_llm

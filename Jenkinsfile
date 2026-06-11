@@ -46,8 +46,9 @@ pipeline {
                             '''
                         } else {
                             bat '''
+                                call venv\\Scripts\\activate.bat
                                 set PYTHONPATH=.
-                                "d:\\02_Interests (Up Skilling )\\05_LLM, RAG, Agents, MCP and more\\Project - Incident_IQ\\venv\\Scripts\\python.exe" -m pytest tests/test_api.py -v
+                                pytest tests/test_api.py -v
                             '''
                         }
                     }
