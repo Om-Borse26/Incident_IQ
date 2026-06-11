@@ -29,16 +29,6 @@ from pathlib import Path
 # override this if you ever need to force a model refresh.
 os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
-# Silence chromadb 0.6.3's broken posthog telemetry.
-# Background: posthog changed its capture() API signature; chromadb calls it
-# with the OLD positional-arg signature, which raises TypeError on every request.
-# chromadb catches that exception and prints "Failed to send telemetry event ..."
-# The env-var flags (ANONYMIZED_TELEMETRY / CHROMA_ANONYMIZED_TELEMETRY) are
-# checked AFTER the telemetry object is constructed, so they don't help here.
-# Patching posthog.capture with a no-op lambda before chromadb is imported is
-# the only reliable fix without downgrading chromadb or posthog.
-import posthog as _posthog
-_posthog.capture = lambda *args, **kwargs: None  # type: ignore[assignment]
 
 import chromadb
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -105,8 +95,6 @@ def _get_embeddings() -> HuggingFaceEmbeddings:
 def _get_collection() -> chromadb.Collection:
     global _collection
     if _collection is None:
-        # anonymized_telemetry=False silences the broken posthog integration
-        # in chromadb 0.6.3 ("capture() takes 1 positional argument but 3 were given")
         from app.config import settings
         chroma_path = os.path.join(settings.DATA_DIR, "chroma_db")
         client = chromadb.PersistentClient(
