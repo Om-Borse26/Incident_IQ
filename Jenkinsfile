@@ -57,9 +57,6 @@ pipeline {
         }
 
         stage('Approval Gate') {
-            when {
-                branch 'main'
-            }
             steps {
                 timeout(time: 1, unit: 'DAYS') {
                     input message: 'Tests passed! Approve deployment to production?', ok: 'Deploy to Railway'
@@ -68,9 +65,6 @@ pipeline {
         }
 
         stage('Deploy to Production') {
-            when {
-                branch 'main'
-            }
             steps {
                 withCredentials([
                     string(credentialsId: 'RAILWAY_TOKEN', variable: 'RAILWAY_TOKEN')
@@ -99,9 +93,6 @@ pipeline {
         }
 
         stage('Post-Deploy Verification') {
-            when {
-                branch 'main'
-            }
             steps {
                 script {
                     if (isUnix()) {
