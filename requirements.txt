@@ -15,7 +15,7 @@ langchain-groq==0.3.8
 langchain-google-genai==2.1.12
 sentence-transformers==3.4.1
 chromadb==0.5.23
-
+onnxruntime==1.19.2
 # Document parsing (vectorless RAG)
 PyMuPDF==1.25.5
 python-docx==1.1.2
