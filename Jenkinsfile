@@ -42,16 +42,22 @@ pipeline {
                         if (isUnix()) {
                             sh '''
                                 . venv/bin/activate
-                                pytest tests/test_api.py -v
+                                pytest tests/test_api.py -v --junitxml=test-results.xml
                             '''
                         } else {
                             bat '''
                                 call venv\\Scripts\\activate.bat
                                 set PYTHONPATH=.
-                                pytest tests/test_api.py -v
+                                pytest tests/test_api.py -v --junitxml=test-results.xml
                             '''
                         }
                     }
+                }
+            }
+            post {
+                always {
+                    // This tells Jenkins to parse the XML file and create nice graphs
+                    junit 'test-results.xml'
                 }
             }
         }
@@ -76,7 +82,7 @@ pipeline {
                                 curl -fsSL cli.new | sh
                                 
                                 echo "Triggering Railway deployment..."
-                                railway up --detach
+                                railway up --service Incident_IQ --detach
                             '''
                         } else {
                             bat '''
@@ -124,13 +130,22 @@ pipeline {
             }
         }
     }
-
+    
+    // Global Post Actions
     post {
-        failure {
-            echo "Pipeline failed. Please check the logs."
+        always {
+            echo "Pipeline execution finished."
+            // We could run 'cleanWs()' here to delete the workspace and save disk space
         }
         success {
-            echo "Pipeline completed successfully."
+            echo "✅ SUCCESS: The pipeline completed flawlessly!"
+            // This is where you would put a Slack webhook or Email notification code
+            // e.g., slackSend(color: 'good', message: "Deployment Successful!")
+        }
+        failure {
+            echo "❌ FAILURE: The pipeline failed or was aborted."
+            // e.g., slackSend(color: 'danger', message: "Build Broken! Please check Jenkins.")
+            // e.g., emailext(subject: "Build Failed", body: "Please check Jenkins", to: "your-email@example.com")
         }
     }
 }
