@@ -38,7 +38,7 @@ def test_auth_gate(mock_get_chat_model, auth_headers):
 def test_health_check():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {"status": "deliberate_failure"}
 
 # c) "hello" query -> mode response doesn't invoke retrieve_node (chitchat routing)
 @patch("services.agent.incident_graph.get_chat_model")
