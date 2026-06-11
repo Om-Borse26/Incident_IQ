@@ -84,7 +84,7 @@ pipeline {
                                 call npm i -g @railway/cli
                                 
                                 echo "Triggering Railway deployment..."
-                                call npx @railway/cli up --detach
+                                call npx @railway/cli up --service Incident_IQ --detach
                             '''
                         }
                     }
