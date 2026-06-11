@@ -418,7 +418,6 @@ async def ingest_postmortem(request: Request, response: Response, file: UploadFi
     Uploads a postmortem document, validates it via LLM, 
     and if valid, adds it to ChromaDB and saves the raw file for download.
     """
-    raise Exception("test")
     # 1. Read file
     content_bytes = await file.read()
     try:
