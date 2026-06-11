@@ -26,3 +26,8 @@ langchain-mcp-adapters==0.1.0
 # google-cloud-storage>=2.16.0  # Uncomment when migrating to Cloud Run (see gcs_sync.py stub)
 cachetools==5.3.3
 langchain-chroma==0.2.6
+
+# Testing
+pytest==8.2.2
+pytest-asyncio==0.23.7
+httpx==0.27.0
