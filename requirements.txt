@@ -14,8 +14,8 @@ langchain-huggingface==0.1.2
 langchain-groq==0.3.8
 langchain-google-genai==2.1.12
 sentence-transformers==3.4.1
-chromadb==0.5.23
-onnxruntime==1.18.1
+chromadb==0.6.3
+
 # Document parsing (vectorless RAG)
 PyMuPDF==1.25.5
 python-docx==1.1.2
@@ -25,4 +25,4 @@ mcp>=1.7
 langchain-mcp-adapters==0.1.0
 # google-cloud-storage>=2.16.0  # Uncomment when migrating to Cloud Run (see gcs_sync.py stub)
 cachetools==5.3.3
-langchain-chroma==0.2.0
+langchain-chroma==0.2.6
