@@ -52,8 +52,15 @@ class TreeNode(TypedDict):
 # ---------------------------------------------------------------------------
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DATA_DIR = PROJECT_ROOT / "data" / "incidents"
-INDEX_DIR = PROJECT_ROOT / "tree_index"
+import os
+_DATA_DIR_ENV = os.environ.get("DATA_DIR")
+if _DATA_DIR_ENV and _DATA_DIR_ENV != ".":
+    DATA_DIR = Path(_DATA_DIR_ENV) / "incidents"
+    INDEX_DIR = Path(_DATA_DIR_ENV) / "tree_index"
+else:
+    DATA_DIR = PROJECT_ROOT / "data" / "incidents"
+    INDEX_DIR = PROJECT_ROOT / "tree_index"
+
 INDEX_PATH = INDEX_DIR / "incidents_tree.json"
 
 SUMMARY_LENGTH = 150  # chars

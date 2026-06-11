@@ -41,6 +41,8 @@ def get_chroma_dir() -> Path:
         return Path(_DATA_DIR_ENV) / "chroma_db"
     return _PROJECT_ROOT / "chroma_db"
 
+CHROMA_DIR = get_chroma_dir()
+
 COLLECTION_NAME = "incidents"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"  # ~80 MB download on first run, then cached
 
