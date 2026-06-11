@@ -9,6 +9,7 @@ os.environ["GEMINI_API_KEY"] = "fake-key"
 
 from app.main import app
 from services.agent.validator import ValidationResult
+from services.retrieval.search import SearchResult
 
 client = TestClient(app)
 
@@ -25,9 +26,20 @@ from services.agent.incident_graph import QueryClassification
 @patch("services.retrieval.search.search_incidents") # Prevent DB interaction
 def test_chitchat_routing(mock_search, mock_get_chat_model):
     mock_llm = MagicMock()
-    # First call is router (with_structured_output). Return "chitchat" type
-    mock_llm.with_structured_output.return_value.invoke.return_value = QueryClassification(query_type="chitchat")
-    # Second call is the actual generation
+    
+    # Create a unified mock output that satisfies both QueryClassification and ReasonedResponse
+    mock_output = MagicMock()
+    mock_output.query_type = "chitchat"
+    mock_output.mode = "chitchat"
+    mock_output.confidence = 1.0
+    mock_output.answer = "Hello there! How can I help?"
+    mock_output.reasoning = ""
+    mock_output.suggested_fixes = []
+    mock_output.sources = []
+    mock_output.needs_postmortem = False
+    
+    mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
+    # Also support direct invoke
     mock_llm.invoke.return_value.content = "Hello there! How can I help?"
     mock_get_chat_model.return_value = mock_llm
 
@@ -35,12 +47,11 @@ def test_chitchat_routing(mock_search, mock_get_chat_model):
     assert response.status_code == 200
     
     data = response.json()
-    assert data["mode"] == "known"
+    assert data["mode"] == "known"  # chitchat_node overrides this to 'known'
     assert data["answer"] == "Hello there! How can I help?"
     # Ensure search was never called (retrieve_node was skipped)
     mock_search.assert_not_called()
 
-from services.retrieval.search import SearchResult
 
 # d) Known incident query -> returns mode:"known" (RAG pipeline works)
 @patch("services.agent.incident_graph.get_chat_model")
@@ -58,9 +69,18 @@ def test_known_incident_query(mock_search, mock_get_chat_model):
     ]
 
     mock_llm = MagicMock()
-    # First call is router. Return "historical"
-    mock_llm.with_structured_output.return_value.invoke.return_value = QueryClassification(query_type="historical")
-    # Second call is the generation
+    
+    mock_output = MagicMock()
+    mock_output.query_type = "historical"
+    mock_output.mode = "historical"
+    mock_output.confidence = 0.9
+    mock_output.answer = "I found the issue, restart the container."
+    mock_output.reasoning = "Matches fake_incident.md"
+    mock_output.suggested_fixes = ["Restart"]
+    mock_output.sources = ["fake_incident.md"]
+    mock_output.needs_postmortem = False
+    
+    mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
     mock_llm.invoke.return_value.content = "I found the issue, restart the container."
     mock_get_chat_model.return_value = mock_llm
 
