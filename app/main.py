@@ -598,5 +598,4 @@ def _build_rag_system_prompt_vectorless(nodes: list[TreeSearchResult]) -> str:
         "4. Do not speculate, infer, or extrapolate beyond what the context explicitly states.\n\n"
         f"INCIDENT CONTEXT:\n\n{context_text}"
     )
-#   T r i g g e r   J e n k i n s  
- 
+# Trigger Jenkins
