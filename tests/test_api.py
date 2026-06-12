@@ -143,16 +143,14 @@ def test_ingest_validation_failure(mock_search, mock_chat_groq):
     assert "Document Rejected" in response.text
 
 # f) 11th rapid request -> 429 (rate limiting works)
-@patch("services.agent.conversational_graph.get_chat_model")
-def test_rate_limiting(mock_get_chat_model):
-    mock_llm = MagicMock()
-    mock_llm.ainvoke = AsyncMock()
-    mock_get_chat_model.return_value = mock_llm
+@patch("app.main.ask_llm")
+def test_rate_limiting(mock_ask_llm):
+    mock_ask_llm.return_value = "Fake answer"
     
     # The rate limit is 10/minute for /ask
     # We will send 11 requests
     for _ in range(11):
-        response = client.post("/incident/analyze", json={"query": "spam"})
+        response = client.post("/ask", json={"question": "spam"})
         if response.status_code == 429:
             break
             
