@@ -19,15 +19,16 @@ def test_health_check():
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "incidentiq"}
 
-from services.agent.incident_graph import QueryClassification
+from services.agent.conversational_graph import QueryClassification
 
 # c) "hello" query -> mode response doesn't invoke retrieve_node (chitchat routing)
-@patch("services.agent.incident_graph.get_chat_model")
+@patch("services.agent.conversational_graph.get_chat_model")
 @patch("services.retrieval.search.search_incidents") # Prevent DB interaction
 def test_chitchat_routing(mock_search, mock_get_chat_model):
     mock_llm = MagicMock()
     
-    # Create a unified mock output that satisfies both QueryClassification and ReasonedResponse
+    # Create a unified mock output that satisfies FollowupClassification,
+    # QueryClassification, and ReasonedResponse
     mock_output = MagicMock()
     mock_output.query_type = "chitchat"
     mock_output.mode = "chitchat"
@@ -37,6 +38,8 @@ def test_chitchat_routing(mock_search, mock_get_chat_model):
     mock_output.suggested_fixes = []
     mock_output.sources = []
     mock_output.needs_postmortem = False
+    mock_output.followup_type = "new_query"
+    mock_output.rewritten_query = "hello"
     
     mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
     # Also support direct invoke
@@ -54,7 +57,7 @@ def test_chitchat_routing(mock_search, mock_get_chat_model):
 
 
 # d) Known incident query -> returns mode:"known" (RAG pipeline works)
-@patch("services.agent.incident_graph.get_chat_model")
+@patch("services.agent.conversational_graph.get_chat_model")
 @patch("services.retrieval.search.search_incidents")
 def test_known_incident_query(mock_search, mock_get_chat_model):
     # Mock search to return proper SearchResult objects
@@ -79,6 +82,8 @@ def test_known_incident_query(mock_search, mock_get_chat_model):
     mock_output.suggested_fixes = ["Restart"]
     mock_output.sources = ["fake_incident.md"]
     mock_output.needs_postmortem = False
+    mock_output.followup_type = "new_query"
+    mock_output.rewritten_query = "how to fix the database?"
     
     mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
     mock_llm.invoke.return_value.content = "I found the issue, restart the container."

@@ -180,16 +180,27 @@ form.addEventListener('submit', async (e) => {
     startLoading();
 
     try {
+        // Build the request body. On follow-up turns, include the session_id
+        // so the backend knows this is part of an ongoing conversation.
+        const requestBody = { query: query };
+        if (currentSessionId) {
+            requestBody.session_id = currentSessionId;
+        }
+
         const response = await fetch(`${API_BASE_URL}/incident/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: query })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         
         const data = await response.json();
         renderResult(data);
+
+        // Clear the input after successful submission for follow-up
+        input.value = '';
+        input.placeholder = 'Ask a follow-up question...';
 
     } catch (err) {
         console.error(err);

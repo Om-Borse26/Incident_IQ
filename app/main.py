@@ -189,45 +189,80 @@ async def ask(request: Request, response: Response, body: AskRequest) -> AskResp
 @limiter.limit("10/minute")
 async def incident_analyze(request: Request, response: Response, body: AnalyzeRequest) -> AnalyzeResponse:
     """
-    Agentic endpoint (Phase 5) — Uses LangGraph for explicit state and orchestration.
+    Agentic endpoint (Phase 12) — Conversational RAG with multi-turn memory.
+
+    How conversation memory works:
+      - The client sends a `session_id` to continue a conversation.
+      - LangGraph's MemorySaver checkpointer persists the full state
+        (including chat_history) per thread_id.
+      - On follow-up messages, the graph reads the existing chat_history
+        from the checkpoint, detects if this is a follow-up, and either:
+          a) Runs the full RAG pipeline with a rewritten query
+          b) Answers directly from conversation context (no retrieval)
+
+    The original incident_graph.py is preserved for learning purposes.
+    This endpoint now uses services.agent.conversational_graph.
     """
-    from services.agent.incident_graph import incident_graph
+    from services.agent.conversational_graph import conversational_graph
     from langgraph.types import Command
     import uuid
-    
+
     session_id = body.session_id or str(uuid.uuid4())
     config = {
         "configurable": {"thread_id": session_id},
-        "run_name": "incident_analysis",
+        "run_name": "conversational_analysis",
         "metadata": {
             "session_id": session_id
         }
     }
-    
+
     query_text = body.query.strip().lower()
     query_hash = hashlib.md5(query_text.encode('utf-8')).hexdigest()
-    
-    # 1. Cache Check (Only if we are NOT resuming a paused graph)
-    if not body.resume_action and query_hash in QUERY_CACHE:
+
+    # 1. Cache Check — Only for first-turn queries without a session_id.
+    #    Follow-up messages (with session_id) MUST NOT be cached because
+    #    they depend on the specific conversation history.
+    if not body.resume_action and not body.session_id and query_hash in QUERY_CACHE:
         logger.info(f"[analyze] CACHE HIT for query: '{body.query}'. Returning instant response.")
         cached_res = QUERY_CACHE[query_hash]
-        # Generate a new session ID for the cached response so it doesn't collide
         cached_res.session_id = session_id
         return cached_res
-    
+
     query_text = body.query
     if body.context:
         query_text = f"{body.context}\n\nQuestion: {body.query}"
-        
+
     try:
         async def run_graph():
             if body.resume_action:
                 logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
-                stream = incident_graph.astream(Command(resume={"action": body.resume_action}), config)
+                stream = conversational_graph.astream(Command(resume={"action": body.resume_action}), config)
             else:
-                initial_state = {"query": query_text, "context": body.context or ""}
-                stream = incident_graph.astream(initial_state, config)
-                
+                # For follow-up turns, the chat_history is already persisted
+                # in the LangGraph checkpoint. We just need to pass the new query.
+                # The graph's entry router checks if chat_history exists and
+                # routes to classify_followup_node accordingly.
+                #
+                # On the very first turn, chat_history will be empty/missing,
+                # so the router goes straight to classify_node.
+                existing_state = None
+                try:
+                    existing_state = conversational_graph.get_state(config)
+                except Exception:
+                    pass
+
+                # Pull existing chat_history from the checkpoint if this is a follow-up
+                existing_history = []
+                if existing_state and existing_state.values:
+                    existing_history = existing_state.values.get("chat_history", [])
+
+                initial_state = {
+                    "query": query_text,
+                    "context": body.context or "",
+                    "chat_history": existing_history,
+                }
+                stream = conversational_graph.astream(initial_state, config)
+
             run_status = "completed"
             async for event in stream:
                 for node_name, node_state in event.items():
@@ -254,16 +289,16 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                 session_id=session_id,
                 status="error"
             )
-                
+
         # Fetch final state from memory checkpointer
-        current_state = incident_graph.get_state(config).values
-        
+        current_state = conversational_graph.get_state(config).values
+
         answer = current_state.get("answer", "")
         if status == "pending_approval":
             answer = "Graph execution paused waiting for human approval. Reply with resume_action='approve' to continue."
-            
+
         generated_path = current_state.get("generated_postmortem_path")
-        
+
         # Auto-ingest if a postmortem was generated
         if generated_path and not generated_path.startswith("Error:"):
             try:
@@ -276,8 +311,8 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                 logger.info(f"[analyze] Successfully auto-ingested generated postmortem: {filename}")
             except Exception as e:
                 logger.error(f"[analyze] Failed to auto-ingest postmortem: {e}")
-                
-        response = AnalyzeResponse(
+
+        resp = AnalyzeResponse(
             mode=current_state.get("mode", "unknown"),
             confidence=current_state.get("confidence", 0.0),
             answer=answer,
@@ -290,15 +325,15 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
             status=status,
             generated_postmortem_path=generated_path
         )
-        
-        # Cache successful full runs
-        if status == "completed":
-            QUERY_CACHE[query_hash] = response
-            
-        return response
+
+        # Cache successful full runs (first-turn only)
+        if status == "completed" and not body.session_id:
+            QUERY_CACHE[query_hash] = resp
+
+        return resp
     except Exception as exc:
         logger.exception("[incident/analyze] Graph completely failed")
-        
+
         # Graceful degradation on total graph failure
         try:
             chunks = search_incidents(query=body.query, k=3)
