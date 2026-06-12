@@ -24,7 +24,10 @@ pipeline {
                         '''
                     } else {
                         bat '''
-                            echo "Using existing local venv to save time..."
+                            echo "Updating local venv dependencies..."
+                            if not exist venv python -m venv venv
+                            call venv\\Scripts\\activate.bat
+                            pip install -r requirements.txt
                         '''
                     }
                 }
