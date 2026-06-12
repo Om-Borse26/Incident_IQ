@@ -203,7 +203,8 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
     The original incident_graph.py is preserved for learning purposes.
     This endpoint now uses services.agent.conversational_graph.
     """
-    from services.agent.conversational_graph import conversational_graph
+    from services.agent.conversational_graph import conversational_workflow
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
     from langgraph.types import Command
     import uuid
 
@@ -219,9 +220,6 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
     query_text = body.query.strip().lower()
     query_hash = hashlib.md5(query_text.encode('utf-8')).hexdigest()
 
-    # 1. Cache Check — Only for first-turn queries without a session_id.
-    #    Follow-up messages (with session_id) MUST NOT be cached because
-    #    they depend on the specific conversation history.
     if not body.resume_action and not body.session_id and query_hash in QUERY_CACHE:
         logger.info(f"[analyze] CACHE HIT for query: '{body.query}'. Returning instant response.")
         cached_res = QUERY_CACHE[query_hash]
@@ -232,126 +230,122 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
     if body.context:
         query_text = f"{body.context}\n\nQuestion: {body.query}"
 
-    try:
-        async def run_graph():
-            if body.resume_action:
-                logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
-                stream = conversational_graph.astream(Command(resume={"action": body.resume_action}), config)
-            else:
-                # For follow-up turns, the chat_history is already persisted
-                # in the LangGraph checkpoint. We just need to pass the new query.
-                # The graph's entry router checks if chat_history exists and
-                # routes to classify_followup_node accordingly.
-                #
-                # On the very first turn, chat_history will be empty/missing,
-                # so the router goes straight to classify_node.
-                existing_state = None
-                try:
-                    existing_state = conversational_graph.get_state(config)
-                except Exception:
-                    pass
+    from fastapi.responses import StreamingResponse
+    import json
 
-                # Pull existing chat_history from the checkpoint if this is a follow-up
-                existing_history = []
-                if existing_state and existing_state.values:
-                    existing_history = existing_state.values.get("chat_history", [])
+    async def stream_graph_execution():
+        try:
+            async with AsyncSqliteSaver.from_conn_string("checkpoints.sqlite") as memory:
+                conversational_graph = conversational_workflow.compile(checkpointer=memory)
 
-                initial_state = {
-                    "query": query_text,
-                    "context": body.context or "",
-                    "chat_history": existing_history,
+                if body.resume_action:
+                    logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
+                    yield f'data: {json.dumps({"type": "status", "message": "Resuming execution..."})}\n\n'
+                    stream = conversational_graph.astream_events(Command(resume={"action": body.resume_action}), config, version="v2")
+                else:
+                    existing_state = None
+                    try:
+                        existing_state = await conversational_graph.aget_state(config)
+                    except Exception:
+                        pass
+
+                    existing_history = []
+                    if existing_state and existing_state.values:
+                        existing_history = existing_state.values.get("chat_history", [])
+
+                    initial_state = {
+                        "query": query_text,
+                        "context": body.context or "",
+                        "chat_history": existing_history,
+                    }
+                    stream = conversational_graph.astream_events(initial_state, config, version="v2")
+
+                run_status = "completed"
+                status_map = {
+                    "classify_node": "Analyzing query type...",
+                    "retrieve_node": "Searching historical incidents...",
+                    "diagnose_node": "Running live diagnostics...",
+                    "diagnostic_extraction_node": "Extracting diagnostic context...",
+                    "generate_answer_node": "Generating response...",
+                    "human_approval_node": "Waiting for human approval...",
                 }
-                stream = conversational_graph.astream(initial_state, config)
 
-            run_status = "completed"
-            async for event in stream:
-                for node_name, node_state in event.items():
-                    if node_name == "__interrupt__":
-                        logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
-                        run_status = "pending_approval"
-                        continue
-                    logger.info(f"[analyze] Node completed: {node_name}")
-            return run_status
+                try:
+                    # To add a global timeout to the stream iteration:
+                    async for event in stream:
+                        event_name = event.get("event")
+                        node_name = event.get("name", "")
+                        
+                        if event_name == "on_chat_model_stream":
+                            metadata_node = event.get("metadata", {}).get("langgraph_node", "")
+                            if metadata_node in ["generate_answer_node", "chitchat_node", "conversational_response_node"]:
+                                chunk = event.get("data", {}).get("chunk")
+                                if chunk and chunk.content:
+                                    yield f'data: {json.dumps({"type": "token", "content": chunk.content})}\n\n'
+                                    
+                        elif event_name == "on_chain_start":
+                            if node_name in status_map:
+                                msg = status_map[node_name]
+                                yield f'data: {json.dumps({"type": "status", "message": msg})}\n\n'
+                            if node_name == "__interrupt__":
+                                logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
+                                run_status = "pending_approval"
 
-        try:
-            status = await asyncio.wait_for(run_graph(), timeout=55.0)
-        except asyncio.TimeoutError:
-            logger.error(f"[analyze] Timeout for session {session_id}")
-            return AnalyzeResponse(
-                mode="unknown",
-                confidence=0.0,
-                answer="The analysis took too long and timed out. Please try a simpler query or check the system later.",
-                sources=[],
-                reasoning="Timeout exceeded 55 seconds.",
-                suggested_fixes=[],
-                diagnostics_available=False,
-                degraded=True,
-                session_id=session_id,
-                status="error"
-            )
+                except asyncio.TimeoutError:
+                    logger.error(f"[analyze] Timeout for session {session_id}")
+                    error_payload = {
+                        "mode": "unknown", "confidence": 0.0,
+                        "answer": "The analysis took too long and timed out.",
+                        "sources": [], "reasoning": "Timeout exceeded 55 seconds.",
+                        "suggested_fixes": [], "diagnostics_available": False,
+                        "degraded": True, "session_id": session_id, "status": "error"
+                    }
+                    yield f'data: {json.dumps({"type": "final_result", "data": error_payload})}\n\n'
+                    return
 
-        # Fetch final state from memory checkpointer
-        current_state = conversational_graph.get_state(config).values
+                # Fetch final state from memory checkpointer
+                current_state = await conversational_graph.aget_state(config)
+                current_state_values = current_state.values if current_state else {}
 
-        answer = current_state.get("answer", "")
-        if status == "pending_approval":
-            answer = "Graph execution paused waiting for human approval. Reply with resume_action='approve' to continue."
+                answer = current_state_values.get("answer", "")
+                if run_status == "pending_approval":
+                    answer = "Graph execution paused waiting for human approval. Reply with resume_action='approve' to continue."
 
-        generated_path = current_state.get("generated_postmortem_path")
+                generated_path = current_state_values.get("generated_postmortem_path")
+                if generated_path and not generated_path.startswith("Error:"):
+                    try:
+                        from services.retrieval.ingest import ingest_single_document
+                        import os
+                        filename = os.path.basename(generated_path)
+                        with open(generated_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        ingest_single_document(content, filename)
+                        logger.info(f"[analyze] Successfully auto-ingested generated postmortem: {filename}")
+                    except Exception as e:
+                        logger.error(f"[analyze] Failed to auto-ingest postmortem: {e}")
 
-        # Auto-ingest if a postmortem was generated
-        if generated_path and not generated_path.startswith("Error:"):
-            try:
-                from services.retrieval.ingest import ingest_single_document
-                import os
-                filename = os.path.basename(generated_path)
-                with open(generated_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                ingest_single_document(content, filename)
-                logger.info(f"[analyze] Successfully auto-ingested generated postmortem: {filename}")
-            except Exception as e:
-                logger.error(f"[analyze] Failed to auto-ingest postmortem: {e}")
+                final_payload = {
+                    "mode": current_state_values.get("mode", "unknown"),
+                    "confidence": current_state_values.get("confidence", 0.0),
+                    "answer": answer,
+                    "sources": current_state_values.get("sources", []),
+                    "reasoning": current_state_values.get("reasoning", ""),
+                    "suggested_fixes": current_state_values.get("suggested_fixes", []),
+                    "diagnostics_available": current_state_values.get("diagnostics_available", False),
+                    "degraded": False,
+                    "session_id": session_id,
+                    "status": run_status,
+                    "generated_postmortem_path": generated_path
+                }
 
-        resp = AnalyzeResponse(
-            mode=current_state.get("mode", "unknown"),
-            confidence=current_state.get("confidence", 0.0),
-            answer=answer,
-            sources=current_state.get("sources", []),
-            reasoning=current_state.get("reasoning", ""),
-            suggested_fixes=current_state.get("suggested_fixes", []),
-            diagnostics_available=current_state.get("diagnostics_available", False),
-            degraded=False,
-            session_id=session_id,
-            status=status,
-            generated_postmortem_path=generated_path
-        )
+                yield f'data: {json.dumps({"type": "final_result", "data": final_payload})}\n\n'
+                
+        except Exception as exc:
+            logger.exception("[incident/analyze] Graph execution failed")
+            yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
 
-        # Cache successful full runs (first-turn only)
-        if status == "completed" and not body.session_id:
-            QUERY_CACHE[query_hash] = resp
+    return StreamingResponse(stream_graph_execution(), media_type="text/event-stream")
 
-        return resp
-    except Exception as exc:
-        logger.exception("[incident/analyze] Graph completely failed")
-
-        # Graceful degradation on total graph failure
-        try:
-            chunks = search_incidents(query=body.query, k=3)
-            sources = _format_sources(chunks, include_text=True)
-            return AnalyzeResponse(
-                mode="unknown",
-                confidence=0.0,
-                answer="Agent analysis failed. Showing raw related incidents as fallback.",
-                sources=sources,
-                reasoning=f"Agent exception: {exc}",
-                suggested_fixes=[],
-                diagnostics_available=False,
-                degraded=True,
-                session_id=session_id,
-                status="failed"
-            )
-        except Exception as fallback_exc:
-            raise HTTPException(status_code=500, detail=f"Agent failed, and fallback failed: {fallback_exc}")
 
 
 @app.post("/incident/search", response_model=IncidentSearchResponse)

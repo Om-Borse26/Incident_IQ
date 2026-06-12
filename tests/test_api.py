@@ -1,6 +1,7 @@
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+import json
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 # Set testing environment before importing app
@@ -27,32 +28,42 @@ from services.agent.conversational_graph import QueryClassification
 def test_chitchat_routing(mock_search, mock_get_chat_model):
     mock_llm = MagicMock()
     
-    # Create a unified mock output that satisfies FollowupClassification,
-    # QueryClassification, and ReasonedResponse
     mock_output = MagicMock()
     mock_output.query_type = "chitchat"
     mock_output.mode = "chitchat"
     mock_output.confidence = 1.0
-    mock_output.answer = "Hello there! How can I help?"
     mock_output.reasoning = ""
     mock_output.suggested_fixes = []
     mock_output.sources = []
     mock_output.needs_postmortem = False
     mock_output.followup_type = "new_query"
     mock_output.rewritten_query = "hello"
+    mock_output.user_mood = "neutral"
+    mock_output.suggested_temperature = 0.5
     
     mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
-    # Also support direct invoke
     mock_llm.invoke.return_value.content = "Hello there! How can I help?"
+    
+    mock_llm.ainvoke = AsyncMock()
+    mock_llm.ainvoke.return_value.content = "Hello there! How can I help?"
+    
     mock_get_chat_model.return_value = mock_llm
 
     response = client.post("/incident/analyze", json={"query": "hello"})
     assert response.status_code == 200
     
-    data = response.json()
-    assert data["mode"] == "known"  # chitchat_node overrides this to 'known'
-    assert data["answer"] == "Hello there! How can I help?"
-    # Ensure search was never called (retrieve_node was skipped)
+    # Parse SSE response
+    lines = response.text.strip().split('\n\n')
+    final_data = None
+    for line in lines:
+        if line.startswith('data: '):
+            evt = json.loads(line[6:])
+            if evt['type'] == 'final_result':
+                final_data = evt['data']
+
+    assert final_data is not None
+    assert final_data["mode"] == "known"  # chitchat_node overrides this to 'known'
+    assert final_data["answer"] == "Hello there! How can I help?"
     mock_search.assert_not_called()
 
 
@@ -77,24 +88,35 @@ def test_known_incident_query(mock_search, mock_get_chat_model):
     mock_output.query_type = "historical"
     mock_output.mode = "historical"
     mock_output.confidence = 0.9
-    mock_output.answer = "I found the issue, restart the container."
     mock_output.reasoning = "Matches fake_incident.md"
     mock_output.suggested_fixes = ["Restart"]
     mock_output.sources = ["fake_incident.md"]
     mock_output.needs_postmortem = False
     mock_output.followup_type = "new_query"
     mock_output.rewritten_query = "how to fix the database?"
+    mock_output.user_mood = "neutral"
+    mock_output.suggested_temperature = 0.5
     
     mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
     mock_llm.invoke.return_value.content = "I found the issue, restart the container."
+    mock_llm.ainvoke = AsyncMock()
+    mock_llm.ainvoke.return_value.content = "I found the issue, restart the container."
     mock_get_chat_model.return_value = mock_llm
 
     response = client.post("/incident/analyze", json={"query": "how to fix the database?"})
     assert response.status_code == 200
     
-    data = response.json()
-    assert data["mode"] == "historical" or data["mode"] == "known"
-    # Ensure search was called
+    # Parse SSE response
+    lines = response.text.strip().split('\n\n')
+    final_data = None
+    for line in lines:
+        if line.startswith('data: '):
+            evt = json.loads(line[6:])
+            if evt['type'] == 'final_result':
+                final_data = evt['data']
+
+    assert final_data is not None
+    assert final_data["mode"] == "historical" or final_data["mode"] == "known"
     mock_search.assert_called_once()
 
 # e) Ingest file without Symptoms/Fixes -> 400 (validator works)
@@ -121,15 +143,14 @@ def test_ingest_validation_failure(mock_search, mock_chat_groq):
     assert "Document Rejected" in response.text
 
 # f) 11th rapid request -> 429 (rate limiting works)
-def test_rate_limiting():
+@patch("services.agent.conversational_graph.get_chat_model")
+def test_rate_limiting(mock_get_chat_model):
+    mock_llm = MagicMock()
+    mock_llm.ainvoke = AsyncMock()
+    mock_get_chat_model.return_value = mock_llm
+    
     # The rate limit is 10/minute for /ask
     # We will send 11 requests
-    # To avoid actual LLM processing slowing down the test, we can use an unauthorized request,
-    # because slowapi limits before authentication.
-    # If slowapi limits after, we can mock the endpoint entirely or just send missing body.
-    
-    # Let's send 11 unauthenticated requests to a rate limited endpoint
-    # Wait, /ask limits are 10/minute
     for _ in range(11):
         response = client.post("/incident/analyze", json={"query": "spam"})
         if response.status_code == 429:

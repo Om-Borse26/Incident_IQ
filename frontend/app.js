@@ -178,10 +178,12 @@ form.addEventListener('submit', async (e) => {
     if (!query) return;
 
     startLoading();
+    // Prepare UI for streaming
+    answerText.innerHTML = "";
+    let accumulatedAnswer = "";
+    contentState.classList.remove('hidden');
 
     try {
-        // Build the request body. On follow-up turns, include the session_id
-        // so the backend knows this is part of an ongoing conversation.
         const requestBody = { query: query };
         if (currentSessionId) {
             requestBody.session_id = currentSessionId;
@@ -195,10 +197,48 @@ form.addEventListener('submit', async (e) => {
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         
-        const data = await response.json();
-        renderResult(data);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
 
-        // Clear the input after successful submission for follow-up
+        while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            
+            // SSE chunks are separated by double newlines
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop(); // Keep the incomplete chunk in the buffer
+
+            for (const part of parts) {
+                if (part.startsWith('data: ')) {
+                    const jsonStr = part.slice(6);
+                    try {
+                        const event = JSON.parse(jsonStr);
+                        
+                        if (event.type === 'status') {
+                            const loaderText = loadingState.querySelector('p');
+                            if (loaderText) loaderText.textContent = event.message;
+                        } 
+                        else if (event.type === 'token') {
+                            accumulatedAnswer += event.content;
+                            // Partially parse markdown as it streams
+                            answerText.innerHTML = marked.parse(accumulatedAnswer);
+                        } 
+                        else if (event.type === 'final_result') {
+                            renderResult(event.data, accumulatedAnswer);
+                        } 
+                        else if (event.type === 'error') {
+                            throw new Error(event.message);
+                        }
+                    } catch (e) {
+                        console.error("Error parsing SSE JSON:", e, jsonStr);
+                    }
+                }
+            }
+        }
+        
         input.value = '';
         input.placeholder = 'Ask a follow-up question...';
 
@@ -210,7 +250,7 @@ form.addEventListener('submit', async (e) => {
     }
 });
 
-function renderResult(data) {
+function renderResult(data, streamedAnswer = null) {
     stopLoading();
     contentState.classList.remove('hidden');
     
@@ -251,7 +291,8 @@ function renderResult(data) {
     }
 
     // Markdown Answer
-    answerText.innerHTML = marked.parse(data.answer || "No specific answer provided.");
+    const finalAnswerText = streamedAnswer || data.answer || "No specific answer provided.";
+    answerText.innerHTML = marked.parse(finalAnswerText);
 
     // Reasoning
     reasoningText.textContent = data.reasoning || "No reasoning traces available.";

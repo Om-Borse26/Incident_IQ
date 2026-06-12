@@ -224,11 +224,15 @@ def ask_llm(prompt: str, system: str | None = None) -> str:
     )
 
 
-def get_chat_model():
+def get_chat_model(temperature: float = 0.3):
     """
     Returns a LangChain BaseChatModel configured with our fallback chain.
     This is used by LangChain agents (e.g. AgentExecutor) to ensure they
     respect the same fallback and retry logic as the rest of the application.
+    
+    Args:
+        temperature (float): The sampling temperature. Set to 0.0 for strict
+                             deterministic extraction tasks.
     """
     from langchain_core.language_models.chat_models import BaseChatModel
     
@@ -242,7 +246,7 @@ def get_chat_model():
                 model=settings.GROQ_MODEL,
                 api_key=settings.GROQ_API_KEY,
                 max_retries=3,
-                temperature=0.3,
+                temperature=temperature,
             ))
         elif provider_name == "gemini" and settings.GEMINI_API_KEY:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -250,7 +254,7 @@ def get_chat_model():
                 model=settings.GEMINI_MODEL,
                 google_api_key=settings.GEMINI_API_KEY,
                 max_retries=0,
-                temperature=0.3,
+                temperature=temperature,
             ))
             
     if not models:
