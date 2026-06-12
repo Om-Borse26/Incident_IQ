@@ -54,6 +54,15 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # ------------------------------------------------------------------
+    # Google Cloud Pub/Sub
+    # ------------------------------------------------------------------
+    GCP_PROJECT_ID: str = "local-dev"
+    # If set, the SDK points at the local emulator instead of real GCP.
+    # Leave blank (or unset) to use real GCP credentials in production.
+    # Example: "localhost:8085"
+    PUBSUB_EMULATOR_HOST: str = ""
+
+    # ------------------------------------------------------------------
     # Validation
     # ------------------------------------------------------------------
     @model_validator(mode="after")

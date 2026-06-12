@@ -1,0 +1,508 @@
+Started by GitHub push by Om-Borse26
+Obtained Jenkinsfile from git https://github.com/Om-Borse26/Incident_IQ.git
+[Pipeline] Start of Pipeline
+[Pipeline] node
+Running on Jenkins in C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Declarative: Checkout SCM)
+[Pipeline] checkout
+Selected Git installation does not exist. Using Default
+The recommended git tool is: NONE
+No credentials specified
+ > git.exe rev-parse --resolve-git-dir C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\.git # timeout=10
+Fetching changes from the remote Git repository
+ > git.exe config remote.origin.url https://github.com/Om-Borse26/Incident_IQ.git # timeout=10
+Fetching upstream changes from https://github.com/Om-Borse26/Incident_IQ.git
+ > git.exe --version # timeout=10
+ > git --version # 'git version 2.42.0.windows.2'
+ > git.exe fetch --tags --force --progress -- https://github.com/Om-Borse26/Incident_IQ.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git.exe rev-parse "refs/remotes/origin/main^{commit}" # timeout=10
+Checking out Revision a5c00285f3ef691d61209561a86570c5d0faefe1 (refs/remotes/origin/main)
+ > git.exe config core.sparsecheckout # timeout=10
+ > git.exe checkout -f a5c00285f3ef691d61209561a86570c5d0faefe1 # timeout=10
+Commit message: "fix: update tests to use the new /incident/analyze endpoint and correct response shapes"
+ > git.exe rev-list --no-walk ae186a75296d3ad4009f2193fa5c57850b82801b # timeout=10
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] withEnv
+[Pipeline] {
+[Pipeline] stage
+[Pipeline] { (Checkout)
+[Pipeline] checkout
+Selected Git installation does not exist. Using Default
+The recommended git tool is: NONE
+No credentials specified
+ > git.exe rev-parse --resolve-git-dir C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\.git # timeout=10
+Fetching changes from the remote Git repository
+ > git.exe config remote.origin.url https://github.com/Om-Borse26/Incident_IQ.git # timeout=10
+Fetching upstream changes from https://github.com/Om-Borse26/Incident_IQ.git
+ > git.exe --version # timeout=10
+ > git --version # 'git version 2.42.0.windows.2'
+ > git.exe fetch --tags --force --progress -- https://github.com/Om-Borse26/Incident_IQ.git +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git.exe rev-parse "refs/remotes/origin/main^{commit}" # timeout=10
+Checking out Revision a5c00285f3ef691d61209561a86570c5d0faefe1 (refs/remotes/origin/main)
+ > git.exe config core.sparsecheckout # timeout=10
+ > git.exe checkout -f a5c00285f3ef691d61209561a86570c5d0faefe1 # timeout=10
+Commit message: "fix: update tests to use the new /incident/analyze endpoint and correct response shapes"
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Setup Environment)
+[Pipeline] script
+[Pipeline] {
+[Pipeline] isUnix
+[Pipeline] bat
+
+C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline>python -m venv venv 
+
+C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline>call venv\Scripts\activate.bat 
+Requirement already satisfied: fastapi==0.115.12 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 1)) (0.115.12)
+Requirement already satisfied: uvicorn==0.34.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 2)) (0.34.3)
+Requirement already satisfied: slowapi==0.1.9 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 3)) (0.1.9)
+Requirement already satisfied: groq==0.30.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 4)) (0.30.0)
+Requirement already satisfied: python-dotenv==1.1.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 5)) (1.1.0)
+Requirement already satisfied: pydantic-settings==2.9.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 6)) (2.9.1)
+Requirement already satisfied: langchain==0.3.25 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 9)) (0.3.25)
+Requirement already satisfied: langchain-community==0.3.24 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 10)) (0.3.24)
+Requirement already satisfied: langgraph==0.3.5 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 11)) (0.3.5)
+Requirement already satisfied: langsmith>=0.1.137 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 12)) (0.3.45)
+Requirement already satisfied: langchain-huggingface==0.1.2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 13)) (0.1.2)
+Requirement already satisfied: langchain-groq==0.3.8 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 14)) (0.3.8)
+Requirement already satisfied: langchain-google-genai==2.1.12 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 15)) (2.1.12)
+Requirement already satisfied: sentence-transformers==3.4.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 16)) (3.4.1)
+Requirement already satisfied: chromadb>=1.0.20 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 17)) (1.5.9)
+Requirement already satisfied: PyMuPDF==1.25.5 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 20)) (1.25.5)
+Requirement already satisfied: python-docx==1.1.2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 21)) (1.1.2)
+Requirement already satisfied: mcp>=1.7 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 24)) (1.12.4)
+Requirement already satisfied: langchain-mcp-adapters==0.1.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 25)) (0.1.0)
+Requirement already satisfied: cachetools==5.3.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 27)) (5.3.3)
+Requirement already satisfied: langchain-chroma==0.2.6 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 28)) (0.2.6)
+Requirement already satisfied: pytest==8.2.2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 31)) (8.2.2)
+Requirement already satisfied: pytest-asyncio==0.23.7 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 32)) (0.23.7)
+Requirement already satisfied: httpx==0.27.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from -r requirements.txt (line 33)) (0.27.0)
+Requirement already satisfied: starlette<0.47.0,>=0.40.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from fastapi==0.115.12->-r requirements.txt (line 1)) (0.46.2)
+Requirement already satisfied: pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from fastapi==0.115.12->-r requirements.txt (line 1)) (2.13.4)
+Requirement already satisfied: typing-extensions>=4.8.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from fastapi==0.115.12->-r requirements.txt (line 1)) (4.15.0)
+Requirement already satisfied: click>=7.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from uvicorn==0.34.3->-r requirements.txt (line 2)) (8.4.1)
+Requirement already satisfied: h11>=0.8 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from uvicorn==0.34.3->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: limits>=2.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from slowapi==0.1.9->-r requirements.txt (line 3)) (5.8.0)
+Requirement already satisfied: anyio<5,>=3.5.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from groq==0.30.0->-r requirements.txt (line 4)) (4.13.0)
+Requirement already satisfied: distro<2,>=1.7.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from groq==0.30.0->-r requirements.txt (line 4)) (1.9.0)
+Requirement already satisfied: sniffio in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from groq==0.30.0->-r requirements.txt (line 4)) (1.3.1)
+Requirement already satisfied: certifi in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from httpx==0.27.0->-r requirements.txt (line 33)) (2026.5.20)
+Requirement already satisfied: httpcore==1.* in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from httpx==0.27.0->-r requirements.txt (line 33)) (1.0.9)
+Requirement already satisfied: idna in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from httpx==0.27.0->-r requirements.txt (line 33)) (3.18)
+Requirement already satisfied: typing-inspection>=0.4.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pydantic-settings==2.9.1->-r requirements.txt (line 6)) (0.4.2)
+Requirement already satisfied: langchain-core<1.0.0,>=0.3.58 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain==0.3.25->-r requirements.txt (line 9)) (0.3.86)
+Requirement already satisfied: langchain-text-splitters<1.0.0,>=0.3.8 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain==0.3.25->-r requirements.txt (line 9)) (0.3.11)
+Requirement already satisfied: SQLAlchemy<3,>=1.4 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain==0.3.25->-r requirements.txt (line 9)) (2.0.50)
+Requirement already satisfied: requests<3,>=2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain==0.3.25->-r requirements.txt (line 9)) (2.34.2)
+Requirement already satisfied: PyYAML>=5.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain==0.3.25->-r requirements.txt (line 9)) (6.0.3)
+Requirement already satisfied: aiohttp<4.0.0,>=3.8.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-community==0.3.24->-r requirements.txt (line 10)) (3.14.1)
+Requirement already satisfied: tenacity!=8.4.0,<10,>=8.1.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-community==0.3.24->-r requirements.txt (line 10)) (9.1.4)
+Requirement already satisfied: dataclasses-json<0.7,>=0.5.7 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-community==0.3.24->-r requirements.txt (line 10)) (0.6.7)
+Requirement already satisfied: httpx-sse<1.0.0,>=0.4.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-community==0.3.24->-r requirements.txt (line 10)) (0.4.3)
+Requirement already satisfied: numpy>=2.1.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-community==0.3.24->-r requirements.txt (line 10)) (2.4.6)
+Requirement already satisfied: langgraph-checkpoint<3.0.0,>=2.0.10 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langgraph==0.3.5->-r requirements.txt (line 11)) (2.1.2)
+Requirement already satisfied: langgraph-prebuilt<0.2,>=0.1.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langgraph==0.3.5->-r requirements.txt (line 11)) (0.1.8)
+Requirement already satisfied: langgraph-sdk<0.2.0,>=0.1.42 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langgraph==0.3.5->-r requirements.txt (line 11)) (0.1.74)
+Requirement already satisfied: huggingface-hub>=0.23.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-huggingface==0.1.2->-r requirements.txt (line 13)) (0.36.2)
+Requirement already satisfied: tokenizers>=0.19.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-huggingface==0.1.2->-r requirements.txt (line 13)) (0.22.2)
+Requirement already satisfied: transformers>=4.39.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-huggingface==0.1.2->-r requirements.txt (line 13)) (4.57.6)
+Requirement already satisfied: google-ai-generativelanguage<1,>=0.7 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (0.12.0)
+Requirement already satisfied: filetype<2,>=1.2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (1.2.0)
+Requirement already satisfied: tqdm in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from sentence-transformers==3.4.1->-r requirements.txt (line 16)) (4.68.2)
+Requirement already satisfied: torch>=1.11.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from sentence-transformers==3.4.1->-r requirements.txt (line 16)) (2.12.0)
+Requirement already satisfied: scikit-learn in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from sentence-transformers==3.4.1->-r requirements.txt (line 16)) (1.9.0)
+Requirement already satisfied: scipy in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from sentence-transformers==3.4.1->-r requirements.txt (line 16)) (1.17.1)
+Requirement already satisfied: Pillow in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from sentence-transformers==3.4.1->-r requirements.txt (line 16)) (12.2.0)
+Requirement already satisfied: lxml>=3.1.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from python-docx==1.1.2->-r requirements.txt (line 21)) (6.1.1)
+Requirement already satisfied: iniconfig in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pytest==8.2.2->-r requirements.txt (line 31)) (2.3.0)
+Requirement already satisfied: packaging in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pytest==8.2.2->-r requirements.txt (line 31)) (25.0)
+Requirement already satisfied: pluggy<2.0,>=1.5 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pytest==8.2.2->-r requirements.txt (line 31)) (1.6.0)
+Requirement already satisfied: colorama in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pytest==8.2.2->-r requirements.txt (line 31)) (0.4.6)
+Requirement already satisfied: orjson<4.0.0,>=3.9.14 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langsmith>=0.1.137->-r requirements.txt (line 12)) (3.11.9)
+Requirement already satisfied: requests-toolbelt<2.0.0,>=1.0.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langsmith>=0.1.137->-r requirements.txt (line 12)) (1.0.0)
+Requirement already satisfied: zstandard<0.24.0,>=0.23.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langsmith>=0.1.137->-r requirements.txt (line 12)) (0.23.0)
+Requirement already satisfied: aiohappyeyeballs>=2.5.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community==0.3.24->-r requirements.txt (line 10)) (2.6.2)
+Requirement already satisfied: aiosignal>=1.4.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community==0.3.24->-r requirements.txt (line 10)) (1.4.0)
+Requirement already satisfied: attrs>=17.3.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community==0.3.24->-r requirements.txt (line 10)) (26.1.0)
+Requirement already satisfied: frozenlist>=1.1.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community==0.3.24->-r requirements.txt (line 10)) (1.8.0)
+Requirement already satisfied: multidict<7.0,>=4.5 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community==0.3.24->-r requirements.txt (line 10)) (6.7.1)
+Requirement already satisfied: propcache>=0.2.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community==0.3.24->-r requirements.txt (line 10)) (0.5.2)
+Requirement already satisfied: yarl<2.0,>=1.17.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from aiohttp<4.0.0,>=3.8.3->langchain-community==0.3.24->-r requirements.txt (line 10)) (1.24.2)
+Requirement already satisfied: marshmallow<4.0.0,>=3.18.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from dataclasses-json<0.7,>=0.5.7->langchain-community==0.3.24->-r requirements.txt (line 10)) (3.26.2)
+Requirement already satisfied: typing-inspect<1,>=0.4.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from dataclasses-json<0.7,>=0.5.7->langchain-community==0.3.24->-r requirements.txt (line 10)) (0.9.0)
+Requirement already satisfied: google-api-core<3.0.0,>=2.17.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-api-core[grpc]<3.0.0,>=2.17.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (2.31.0)
+Requirement already satisfied: google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (2.53.0)
+Requirement already satisfied: grpcio<2.0.0,>=1.59.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (1.81.1)
+Requirement already satisfied: proto-plus<2.0.0,>=1.22.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (1.28.0)
+Requirement already satisfied: protobuf<8.0.0,>=4.25.8 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (6.33.6)
+Requirement already satisfied: googleapis-common-protos<2.0.0,>=1.63.2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-api-core<3.0.0,>=2.17.1->google-api-core[grpc]<3.0.0,>=2.17.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (1.75.0)
+Requirement already satisfied: grpcio-status<2.0.0,>=1.41.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-api-core[grpc]<3.0.0,>=2.17.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (1.81.1)
+Requirement already satisfied: pyasn1-modules>=0.2.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (0.4.2)
+Requirement already satisfied: cryptography>=38.0.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (48.0.1)
+Requirement already satisfied: jsonpatch<2.0.0,>=1.33.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-core<1.0.0,>=0.3.58->langchain==0.3.25->-r requirements.txt (line 9)) (1.33)
+Requirement already satisfied: uuid-utils<1.0,>=0.12.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langchain-core<1.0.0,>=0.3.58->langchain==0.3.25->-r requirements.txt (line 9)) (0.16.0)
+Requirement already satisfied: jsonpointer>=1.9 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from jsonpatch<2.0.0,>=1.33.0->langchain-core<1.0.0,>=0.3.58->langchain==0.3.25->-r requirements.txt (line 9)) (3.1.1)
+Requirement already satisfied: ormsgpack>=1.10.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from langgraph-checkpoint<3.0.0,>=2.0.10->langgraph==0.3.5->-r requirements.txt (line 11)) (1.12.2)
+Requirement already satisfied: annotated-types>=0.6.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.115.12->-r requirements.txt (line 1)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.46.4 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pydantic!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0,>=1.7.4->fastapi==0.115.12->-r requirements.txt (line 1)) (2.46.4)
+Requirement already satisfied: charset_normalizer<4,>=2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from requests<3,>=2->langchain==0.3.25->-r requirements.txt (line 9)) (3.4.7)
+Requirement already satisfied: urllib3<3,>=1.26 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from requests<3,>=2->langchain==0.3.25->-r requirements.txt (line 9)) (2.7.0)
+Requirement already satisfied: greenlet>=1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from SQLAlchemy<3,>=1.4->langchain==0.3.25->-r requirements.txt (line 9)) (3.5.1)
+Requirement already satisfied: filelock in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from transformers>=4.39.0->langchain-huggingface==0.1.2->-r requirements.txt (line 13)) (3.29.3)
+Requirement already satisfied: regex!=2019.12.17 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from transformers>=4.39.0->langchain-huggingface==0.1.2->-r requirements.txt (line 13)) (2026.5.9)
+Requirement already satisfied: safetensors>=0.4.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from transformers>=4.39.0->langchain-huggingface==0.1.2->-r requirements.txt (line 13)) (0.8.0)
+Requirement already satisfied: fsspec>=2023.5.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from huggingface-hub>=0.23.0->langchain-huggingface==0.1.2->-r requirements.txt (line 13)) (2026.4.0)
+Requirement already satisfied: mypy-extensions>=0.3.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from typing-inspect<1,>=0.4.0->dataclasses-json<0.7,>=0.5.7->langchain-community==0.3.24->-r requirements.txt (line 10)) (1.1.0)
+Requirement already satisfied: build>=1.0.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (1.5.0)
+Requirement already satisfied: pybase64>=1.4.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (1.4.3)
+Requirement already satisfied: onnxruntime>=1.14.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (1.26.0)
+Requirement already satisfied: opentelemetry-api>=1.2.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (1.42.1)
+Requirement already satisfied: opentelemetry-exporter-otlp-proto-grpc>=1.2.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (1.42.1)
+Requirement already satisfied: opentelemetry-sdk>=1.2.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (1.42.1)
+Requirement already satisfied: pypika>=0.48.9 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (0.51.1)
+Requirement already satisfied: overrides>=7.3.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (7.7.0)
+Requirement already satisfied: importlib-resources in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (7.1.0)
+Requirement already satisfied: bcrypt>=4.0.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (5.0.0)
+Requirement already satisfied: typer>=0.9.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (0.26.7)
+Requirement already satisfied: kubernetes>=28.1.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (36.0.2)
+Requirement already satisfied: mmh3>=4.0.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (5.2.1)
+Requirement already satisfied: rich>=10.11.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (15.0.0)
+Requirement already satisfied: jsonschema>=4.19.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from chromadb>=1.0.20->-r requirements.txt (line 17)) (4.26.0)
+Requirement already satisfied: python-multipart>=0.0.9 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from mcp>=1.7->-r requirements.txt (line 24)) (0.0.32)
+Requirement already satisfied: pywin32>=310 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from mcp>=1.7->-r requirements.txt (line 24)) (312)
+Requirement already satisfied: sse-starlette>=1.6.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from mcp>=1.7->-r requirements.txt (line 24)) (3.0.3)
+Requirement already satisfied: pyproject_hooks in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from build>=1.0.3->chromadb>=1.0.20->-r requirements.txt (line 17)) (1.2.0)
+Requirement already satisfied: cffi>=2.0.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from cryptography>=38.0.3->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (2.0.0)
+Requirement already satisfied: pycparser in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from cffi>=2.0.0->cryptography>=38.0.3->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (3.0)
+Requirement already satisfied: jsonschema-specifications>=2023.03.6 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from jsonschema>=4.19.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (2025.9.1)
+Requirement already satisfied: referencing>=0.28.4 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from jsonschema>=4.19.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (0.37.0)
+Requirement already satisfied: rpds-py>=0.25.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from jsonschema>=4.19.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (2026.5.1)
+Requirement already satisfied: six>=1.9.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from kubernetes>=28.1.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (1.17.0)
+Requirement already satisfied: python-dateutil>=2.5.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from kubernetes>=28.1.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (2.9.0.post0)
+Requirement already satisfied: websocket-client!=0.40.0,!=0.41.*,!=0.42.*,>=0.32.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from kubernetes>=28.1.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (1.9.0)
+Requirement already satisfied: requests-oauthlib in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from kubernetes>=28.1.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (2.0.0)
+Requirement already satisfied: durationpy>=0.7 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from kubernetes>=28.1.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (0.10)
+Requirement already satisfied: deprecated>=1.2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from limits>=2.3->slowapi==0.1.9->-r requirements.txt (line 3)) (1.3.1)
+Requirement already satisfied: wrapt<3,>=1.10 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from deprecated>=1.2->limits>=2.3->slowapi==0.1.9->-r requirements.txt (line 3)) (2.2.1)
+Requirement already satisfied: flatbuffers in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from onnxruntime>=1.14.1->chromadb>=1.0.20->-r requirements.txt (line 17)) (25.12.19)
+Requirement already satisfied: opentelemetry-exporter-otlp-proto-common==1.42.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from opentelemetry-exporter-otlp-proto-grpc>=1.2.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (1.42.1)
+Requirement already satisfied: opentelemetry-proto==1.42.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from opentelemetry-exporter-otlp-proto-grpc>=1.2.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (1.42.1)
+Requirement already satisfied: opentelemetry-semantic-conventions==0.63b1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from opentelemetry-sdk>=1.2.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (0.63b1)
+Requirement already satisfied: pyasn1<0.7.0,>=0.6.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from pyasn1-modules>=0.2.1->google-auth!=2.24.0,!=2.25.0,<3.0.0,>=2.14.1->google-ai-generativelanguage<1,>=0.7->langchain-google-genai==2.1.12->-r requirements.txt (line 15)) (0.6.3)
+Requirement already satisfied: markdown-it-py>=2.2.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from rich>=10.11.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (4.2.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from rich>=10.11.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (2.20.0)
+Requirement already satisfied: mdurl~=0.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from markdown-it-py>=2.2.0->rich>=10.11.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (0.1.2)
+Requirement already satisfied: setuptools<82 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from torch>=1.11.0->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (81.0.0)
+Requirement already satisfied: sympy>=1.13.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from torch>=1.11.0->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (1.14.0)
+Requirement already satisfied: networkx>=2.5.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from torch>=1.11.0->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (3.6.1)
+Requirement already satisfied: jinja2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from torch>=1.11.0->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (3.1.6)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from sympy>=1.13.3->torch>=1.11.0->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (1.3.0)
+Requirement already satisfied: shellingham>=1.3.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from typer>=0.9.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (1.5.4)
+Requirement already satisfied: annotated-doc>=0.0.2 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from typer>=0.9.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (0.0.4)
+Requirement already satisfied: httptools>=0.6.3 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from uvicorn[standard]>=0.18.3->chromadb>=1.0.20->-r requirements.txt (line 17)) (0.8.0)
+Requirement already satisfied: watchfiles>=0.13 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from uvicorn[standard]>=0.18.3->chromadb>=1.0.20->-r requirements.txt (line 17)) (1.2.0)
+Requirement already satisfied: websockets>=10.4 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from uvicorn[standard]>=0.18.3->chromadb>=1.0.20->-r requirements.txt (line 17)) (16.0)
+Requirement already satisfied: MarkupSafe>=2.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from jinja2->torch>=1.11.0->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (3.0.3)
+Requirement already satisfied: oauthlib>=3.0.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from requests-oauthlib->kubernetes>=28.1.0->chromadb>=1.0.20->-r requirements.txt (line 17)) (3.3.1)
+Requirement already satisfied: joblib>=1.4.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from scikit-learn->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (1.5.3)
+Requirement already satisfied: narwhals>=2.0.1 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from scikit-learn->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (2.22.1)
+Requirement already satisfied: threadpoolctl>=3.5.0 in c:\programdata\jenkins\.jenkins\workspace\incident_iq_pipeline\venv\lib\site-packages (from scikit-learn->sentence-transformers==3.4.1->-r requirements.txt (line 16)) (3.6.0)
+
+[notice] A new release of pip is available: 25.3 -> 26.1.2
+[notice] To update, run: python.exe -m pip install --upgrade pip
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Run Gate Tests)
+[Pipeline] withCredentials
+Masking supported pattern matches of %GROQ_API_KEY% or %GEMINI_API_KEY% or %LANGCHAIN_API_KEY%
+[Pipeline] {
+[Pipeline] script
+[Pipeline] {
+[Pipeline] isUnix
+[Pipeline] bat
+
+C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline>call venv\Scripts\activate.bat 
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-8.2.2, pluggy-1.6.0 -- C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline
+plugins: anyio-4.13.0, langsmith-0.3.45, asyncio-0.23.7
+asyncio: mode=Mode.STRICT
+collecting ... collected 6 items
+
+tests/test_api.py::test_auth_gate FAILED                                 [ 16%]
+tests/test_api.py::test_health_check PASSED                              [ 33%]
+tests/test_api.py::test_chitchat_routing FAILED                          [ 50%]
+tests/test_api.py::test_known_incident_query FAILED                      [ 66%]
+tests/test_api.py::test_ingest_validation_failure PASSED                 [ 83%]
+tests/test_api.py::test_rate_limiting PASSED                             [100%]
+
+================================== FAILURES ===================================
+_______________________________ test_auth_gate ________________________________
+
+mock_get_chat_model = <MagicMock name='get_chat_model' id='2157797757616'>
+auth_headers = {'Authorization': 'Bearer super-secret-key'}
+
+    @patch("services.agent.incident_graph.get_chat_model")
+    def test_auth_gate(mock_get_chat_model, auth_headers):
+        # Setup mock to avoid actual LLM calls
+        mock_llm = MagicMock()
+        mock_llm.with_structured_output.return_value.invoke.return_value = {"type": "unknown"}
+        mock_llm.invoke.return_value.content = "Mocked answer"
+        mock_get_chat_model.return_value = mock_llm
+    
+        # Without token
+        response = client.post("/incident/analyze", json={"query": "hello"})
+>       assert response.status_code == 401
+E       assert 200 == 401
+E        +  where 200 = <Response [200 OK]>.status_code
+
+tests\test_api.py:31: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    services.agent.incident_graph:incident_graph.py:64 [graph] classify_node failed: 'dict' object has no attribute 'query_type'
+WARNING  sentence_transformers.SentenceTransformer:SentenceTransformer.py:1524 No sentence-transformers model found with name sentence-transformers/all-MiniLM-L6-v2. Creating a new one with mean pooling.
+WARNING  app.llm.client:client.py:217 [llm] Provider 'groq' failed: Groq error: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}} — trying next in chain
+WARNING  app.llm.client:client.py:217 [llm] Provider 'gemini' failed: Gemini error: Invalid argument provided to Gemini: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+] — trying next in chain
+ERROR    services.retrieval.tree_search:tree_search.py:144 [tree_search] LLM routing failed: All providers in fallback chain failed. Order tried: ['groq', 'gemini']. Errors: [('groq', "Groq error: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}"), ('gemini', 'Gemini error: Invalid argument provided to Gemini: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"\ndomain: "googleapis.com"\nmetadata {\n  key: "service"\n  value: "generativelanguage.googleapis.com"\n}\n, locale: "en-US"\nmessage: "API key not valid. Please pass a valid API key."\n]')]
+ERROR    services.agent.incident_graph:incident_graph.py:278 [graph] reason_node extraction failed: 'dict' object has no attribute 'sources'
+____________________________ test_chitchat_routing ____________________________
+
+mock_search = <MagicMock name='search_incidents' id='2156666699856'>
+mock_get_chat_model = <MagicMock name='get_chat_model' id='2156668508480'>
+auth_headers = {'Authorization': 'Bearer super-secret-key'}
+
+    @patch("services.agent.incident_graph.get_chat_model")
+    @patch("services.retrieval.search.search_incidents") # Prevent DB interaction
+    def test_chitchat_routing(mock_search, mock_get_chat_model, auth_headers):
+        mock_llm = MagicMock()
+        # First call is router (with_structured_output). Return "chitchat" type
+        mock_llm.with_structured_output.return_value.invoke.return_value = {"type": "chitchat"}
+        # Second call is the actual generation
+        mock_llm.invoke.return_value.content = "Hello there! How can I help?"
+        mock_get_chat_model.return_value = mock_llm
+    
+        response = client.post("/incident/analyze", json={"query": "hello"}, headers=auth_headers)
+        assert response.status_code == 200
+    
+        data = response.json()
+>       assert data["mode"] == "chitchat"
+E       AssertionError: assert 'unknown' == 'chitchat'
+E         
+E         - chitchat
+E         + unknown
+
+tests\test_api.py:58: AssertionError
+__________________________ test_known_incident_query __________________________
+
+mock_search = <MagicMock name='search_incidents' id='2157930160416'>
+mock_get_chat_model = <MagicMock name='get_chat_model' id='2157930159408'>
+auth_headers = {'Authorization': 'Bearer super-secret-key'}
+
+    @patch("services.agent.incident_graph.get_chat_model")
+    @patch("services.retrieval.search.search_incidents")
+    def test_known_incident_query(mock_search, mock_get_chat_model, auth_headers):
+        # Mock search to return dummy chunks
+        mock_chunk = MagicMock()
+        mock_chunk.page_content = "The fix was to restart the container."
+        mock_chunk.metadata = {"source": "fake_incident.md"}
+        mock_search.return_value = [mock_chunk]
+    
+        mock_llm = MagicMock()
+        # First call is router. Return "historical"
+        mock_llm.with_structured_output.return_value.invoke.return_value = {"type": "historical"}
+        # Second call is the generation
+        mock_llm.invoke.return_value.content = "I found the issue, restart the container."
+        mock_get_chat_model.return_value = mock_llm
+    
+        response = client.post("/incident/analyze", json={"query": "how to fix the database?"}, headers=auth_headers)
+>       assert response.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = <Response [500 Internal Server Error]>.status_code
+
+tests\test_api.py:80: AssertionError
+------------------------------ Captured log call ------------------------------
+ERROR    services.agent.incident_graph:incident_graph.py:64 [graph] classify_node failed: 'dict' object has no attribute 'query_type'
+WARNING  app.llm.client:client.py:217 [llm] Provider 'groq' failed: Groq error: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}} — trying next in chain
+WARNING  app.llm.client:client.py:217 [llm] Provider 'gemini' failed: Gemini error: Invalid argument provided to Gemini: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"
+domain: "googleapis.com"
+metadata {
+  key: "service"
+  value: "generativelanguage.googleapis.com"
+}
+, locale: "en-US"
+message: "API key not valid. Please pass a valid API key."
+] — trying next in chain
+ERROR    services.retrieval.tree_search:tree_search.py:144 [tree_search] LLM routing failed: All providers in fallback chain failed. Order tried: ['groq', 'gemini']. Errors: [('groq', "Groq error: Error code: 401 - {'error': {'message': 'Invalid API Key', 'type': 'invalid_request_error', 'code': 'invalid_api_key'}}"), ('gemini', 'Gemini error: Invalid argument provided to Gemini: 400 API key not valid. Please pass a valid API key. [reason: "API_KEY_INVALID"\ndomain: "googleapis.com"\nmetadata {\n  key: "service"\n  value: "generativelanguage.googleapis.com"\n}\n, locale: "en-US"\nmessage: "API key not valid. Please pass a valid API key."\n]')]
+ERROR    app.main:main.py:292 [incident/analyze] Graph completely failed
+Traceback (most recent call last):
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\app\main.py", line 234, in incident_analyze
+    status = await asyncio.wait_for(run_graph(), timeout=55.0)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\app\main.py", line 224, in run_graph
+    async for event in stream:
+    ...<5 lines>...
+            logger.info(f"[analyze] Node completed: {node_name}")
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\pregel\__init__.py", line 2305, in astream
+    async for _ in runner.atick(
+    ...<7 lines>...
+            yield o
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\pregel\runner.py", line 444, in atick
+    await arun_with_retry(
+    ...<7 lines>...
+    )
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\pregel\retry.py", line 128, in arun_with_retry
+    return await task.proc.ainvoke(task.input, config)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\utils\runnable.py", line 583, in ainvoke
+    input = await step.ainvoke(input, config, **kwargs)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\utils\runnable.py", line 371, in ainvoke
+    ret = await asyncio.create_task(coro, context=context)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\services\agent\incident_graph.py", line 228, in reason_node
+    Vector Results: {json.dumps(state.get('retrieved_incidents', []), indent=2)}
+                     ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python314\Lib\json\__init__.py", line 242, in dumps
+    **kw).encode(obj)
+          ~~~~~~^^^^^
+  File "C:\Python314\Lib\json\encoder.py", line 202, in encode
+    chunks = self.iterencode(o, _one_shot=True)
+  File "C:\Python314\Lib\json\encoder.py", line 263, in iterencode
+    return _iterencode(o, 0)
+  File "C:\Python314\Lib\json\encoder.py", line 182, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+                    f'is not JSON serializable')
+TypeError: Object of type MagicMock is not JSON serializable
+when serializing dict item 'title'
+when serializing list item 0
+During task with name 'reason_node' and id 'ae58127f-4062-4938-8da6-1ecbf4c9e247'
+WARNING  sentence_transformers.SentenceTransformer:SentenceTransformer.py:1524 No sentence-transformers model found with name sentence-transformers/all-MiniLM-L6-v2. Creating a new one with mean pooling.
+============================== warnings summary ===============================
+venv\Lib\site-packages\chromadb\telemetry\opentelemetry\__init__.py:128
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\chromadb\telemetry\opentelemetry\__init__.py:128: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    if asyncio.iscoroutinefunction(f):
+
+venv\Lib\site-packages\langsmith\run_helpers.py:503
+venv\Lib\site-packages\langsmith\run_helpers.py:503
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langsmith\run_helpers.py:503: DeprecationWarning: The following keyword arguments are not recognized and will be ignored: ['run_name'].
+    warnings.warn(
+
+venv\Lib\site-packages\langgraph\checkpoint\base\__init__.py:18
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\checkpoint\base\__init__.py:18: LangChainPendingDeprecationWarning: The default value of `allowed_objects` will change in a future version. Pass an explicit value (e.g., allowed_objects='messages' or allowed_objects='core') to suppress this warning.
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+
+venv\Lib\site-packages\langgraph\utils\runnable.py:384: 11 warnings
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\utils\runnable.py:384: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    asyncio.iscoroutinefunction(func)
+
+venv\Lib\site-packages\langgraph\utils\runnable.py:386
+venv\Lib\site-packages\langgraph\utils\runnable.py:386
+venv\Lib\site-packages\langgraph\utils\runnable.py:386
+venv\Lib\site-packages\langgraph\utils\runnable.py:386
+venv\Lib\site-packages\langgraph\utils\runnable.py:386
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\langgraph\utils\runnable.py:386: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    and asyncio.iscoroutinefunction(func.__call__)
+
+venv\Lib\site-packages\fastapi\routing.py:233
+venv\Lib\site-packages\fastapi\routing.py:233
+venv\Lib\site-packages\fastapi\routing.py:233
+venv\Lib\site-packages\fastapi\routing.py:233
+venv\Lib\site-packages\fastapi\routing.py:233
+venv\Lib\site-packages\fastapi\routing.py:233
+venv\Lib\site-packages\fastapi\routing.py:233
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\fastapi\routing.py:233: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    is_coroutine = asyncio.iscoroutinefunction(dependant.call)
+
+venv\Lib\site-packages\slowapi\extension.py:717
+venv\Lib\site-packages\slowapi\extension.py:717
+venv\Lib\site-packages\slowapi\extension.py:717
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\slowapi\extension.py:717: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    if asyncio.iscoroutinefunction(func):
+
+venv\Lib\site-packages\pytest_asyncio\plugin.py:166: 198 warnings
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\pytest_asyncio\plugin.py:166: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(obj) or inspect.isasyncgenfunction(obj)
+
+venv\Lib\site-packages\pytest_asyncio\plugin.py:429
+venv\Lib\site-packages\pytest_asyncio\plugin.py:429
+venv\Lib\site-packages\pytest_asyncio\plugin.py:429
+venv\Lib\site-packages\pytest_asyncio\plugin.py:429
+venv\Lib\site-packages\pytest_asyncio\plugin.py:429
+venv\Lib\site-packages\pytest_asyncio\plugin.py:429
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\pytest_asyncio\plugin.py:429: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    return asyncio.iscoroutinefunction(func)
+
+tests/test_api.py::test_auth_gate
+  C:\ProgramData\Jenkins\.jenkins\workspace\Incident_IQ_Pipeline\venv\Lib\site-packages\pytest_asyncio\plugin.py:1001: DeprecationWarning: 'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16
+    return asyncio.get_event_loop_policy()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_api.py::test_auth_gate - assert 200 == 401
+ +  where 200 = <Response [200 OK]>.status_code
+FAILED tests/test_api.py::test_chitchat_routing - AssertionError: assert 'unknown' == 'chitchat'
+  
+  - chitchat
+  + unknown
+FAILED tests/test_api.py::test_known_incident_query - assert 500 == 200
+ +  where 500 = <Response [500 Internal Server Error]>.status_code
+================= 3 failed, 3 passed, 235 warnings in 15.63s ==================
+[Pipeline] }
+[Pipeline] // script
+[Pipeline] }
+[Pipeline] // withCredentials
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Approval Gate)
+Stage "Approval Gate" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Deploy to Production)
+Stage "Deploy to Production" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Post-Deploy Verification)
+Stage "Post-Deploy Verification" skipped due to earlier failure(s)
+[Pipeline] getContext
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] stage
+[Pipeline] { (Declarative: Post Actions)
+[Pipeline] echo
+Pipeline failed. Please check the logs.
+[Pipeline] }
+[Pipeline] // stage
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // withEnv
+[Pipeline] }
+[Pipeline] // node
+[Pipeline] End of Pipeline
+ERROR: script returned exit code 1
+Finished: FAILURE

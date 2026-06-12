@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse
@@ -12,7 +13,6 @@ from services.retrieval.search import search_incidents, SearchResult
 from services.retrieval.tree_search import tree_search, TreeSearchResult
 from services.agent.incident_graph import incident_graph
 from services.agent.validator import validate_postmortem
-from services.retrieval.ingest import ingest_single_document
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,22 @@ async def lifespan(app: FastAPI):
     # Ensure raw_documents directory exists
     raw_docs_dir = os.path.join(settings.DATA_DIR, "raw_documents")
     os.makedirs(raw_docs_dir, exist_ok=True)
-    
+
+    # Set up Pub/Sub topics and subscriptions (idempotent — safe on every restart)
+    try:
+        from services.messaging.pubsub_client import pubsub_client
+        pubsub_client.create_topic_and_subscription_if_not_exists()
+        logger.info("[startup] Pub/Sub topics and subscriptions ready.")
+    except Exception as exc:
+        # Pub/Sub setup failure must NOT crash the API.
+        # The API can still serve queries; only new ingestion events will be lost
+        # if Pub/Sub is unreachable (e.g., emulator not running in local dev).
+        logger.warning(
+            "[startup] Pub/Sub setup failed: %s. "
+            "Ingestion events will not be published until Pub/Sub is available.",
+            exc,
+        )
+
     yield
     logger.info("Application shutdown...")
 
@@ -407,9 +422,21 @@ async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSea
 @limiter.limit("5/minute")
 async def ingest_postmortem(request: Request, response: Response, file: UploadFile = File(...)):
     """
-    Knowledge Ingestion Pipeline.
-    Uploads a postmortem document, validates it via LLM, 
-    and if valid, adds it to ChromaDB and saves the raw file for download.
+    Knowledge Ingestion Pipeline — Phase 11: Event-Driven.
+
+    The API now returns IMMEDIATELY after:
+      1. Validating the document (LLM call — fast)
+      2. Saving the raw file to disk
+      3. Publishing a lightweight Pub/Sub message
+
+    The heavy work (embedding, ChromaDB write, tree index rebuild) is done
+    ASYNCHRONOUSLY by the IngestionWorker in a separate process.
+    The incident will be searchable in ~30 seconds.
+
+    DESIGN PRINCIPLE: if Pub/Sub publish fails, we LOG it but do NOT fail
+    the request. The file is already saved. The user's upload succeeded.
+    They can manually re-trigger ingestion. Never let a messaging failure
+    break the user-facing API.
     """
     # 1. Read file
     content_bytes = await file.read()
@@ -417,36 +444,61 @@ async def ingest_postmortem(request: Request, response: Response, file: UploadFi
         content = content_bytes.decode('utf-8')
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="File must be a valid UTF-8 text or markdown file.")
-        
-    # 2. LLM Validation
+
+    # 2. LLM Validation (fast — returns accept/reject + reason)
     validation = validate_postmortem(content)
     if not validation.is_valid:
         raise HTTPException(
-            status_code=422, 
+            status_code=422,
             detail=f"Document Rejected: {validation.reason}"
         )
-        
-    # 3. Add to Vector DB
-    try:
-        ingest_single_document(content, file.filename)
-    except Exception as e:
-        logger.error(f"Failed to ingest to Chroma: {e}")
-        raise HTTPException(status_code=500, detail=f"Vector DB insertion failed: {e}")
-        
-    # 4. Save raw file for download
+
+    # 3. Save raw file to disk so the worker can read it later
     raw_docs_dir = os.path.join(os.environ.get("DATA_DIR", "."), "raw_documents")
+    os.makedirs(raw_docs_dir, exist_ok=True)
     file_path = os.path.join(raw_docs_dir, file.filename)
-    
+
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
-        
-    # 5. Invalidate the semantic cache since new knowledge was added
-    QUERY_CACHE.clear()
-        
+
+    logger.info("[ingest] File saved to '%s'. Publishing event...", file_path)
+
+    # 4. Publish event to Pub/Sub — async ingestion starts here
+    #    IMPORTANT: wrapped in try/except. A Pub/Sub failure must NEVER
+    #    cause a 5xx. The file is already saved; worst case is delayed search.
+    incident_id = str(uuid4())
+    try:
+        from services.messaging.pubsub_client import pubsub_client
+        msg_id = pubsub_client.publish_incident_ingested(
+            incident_id=incident_id,
+            filename=file.filename,
+            file_path=file_path,
+        )
+        if msg_id:
+            logger.info("[ingest] Pub/Sub message published (id=%s)", msg_id)
+        else:
+            logger.error(
+                "[ingest] Pub/Sub publish returned None for '%s'. "
+                "File is saved but ingestion will NOT run automatically.",
+                file.filename,
+            )
+    except Exception as exc:
+        logger.error(
+            "[ingest] Pub/Sub publish raised unexpectedly for '%s': %s. "
+            "Continuing — file is saved.",
+            file.filename,
+            exc,
+        )
+
     return {
-        "status": "success",
-        "message": f"Successfully ingested {file.filename}",
-        "validator_reason": validation.reason
+        "status": "processing",
+        "incident_id": incident_id,
+        "message": (
+            f"File '{file.filename}' validated and saved. "
+            "Ingestion is running in the background. "
+            "The incident will be searchable in ~30 seconds."
+        ),
+        "validator_reason": validation.reason,
     }
 
 

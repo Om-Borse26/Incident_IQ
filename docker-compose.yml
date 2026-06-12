@@ -1,5 +1,21 @@
 version: "3.9"
 services:
+  # ─── Google Pub/Sub emulator ─────────────────────────────────────────────
+  pubsub-emulator:
+    image: google/cloud-sdk:latest
+    command: >
+      gcloud beta emulators pubsub start
+      --host-port=0.0.0.0:8085
+      --project=local-dev
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── FastAPI application ──────────────────────────────────────────────────
   api:
     build: .
     ports:
@@ -7,7 +23,32 @@ services:
     volumes:
       - ./chroma_db:/app/chroma_db
       - ./tree_index:/app/tree_index
+      - ./data:/app/data          # shared raw_documents volume
     env_file:
       - .env
     environment:
       - PORT=8080
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - GCP_PROJECT_ID=local-dev
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+
+  # ─── Ingestion worker ─────────────────────────────────────────────────────
+  # In production this runs as a separate Railway service or Cloud Run job.
+  # It subscribes to the Pub/Sub topic and performs the heavy embedding work.
+  worker:
+    build: .
+    command: python -m services.messaging.ingestion_worker
+    volumes:
+      - ./chroma_db:/app/chroma_db   # same ChromaDB as the API
+      - ./tree_index:/app/tree_index
+      - ./data:/app/data              # shared raw_documents so worker can read saved files
+    env_file:
+      - .env
+    environment:
+      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - GCP_PROJECT_ID=local-dev
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
