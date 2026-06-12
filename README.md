@@ -23,3 +23,5 @@ uvicorn app.main:app --reload
 GET /health
 → {"status": "ok", "service": "incidentiq"}
 ```
+
+*Note: As of Phase 11, the ingestion pipeline is event-driven via Google Pub/Sub.*
