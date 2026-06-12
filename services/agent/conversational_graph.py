@@ -382,7 +382,7 @@ async def diagnose_node(state: ConversationalState) -> dict:
 
     try:
         extracted = extractor.invoke(f"Extract the service name from: {query_to_use}")
-        service_name = extracted.service_name
+        service_name = extracted.service_name.replace(" ", "-").lower() if extracted.service_name else ""
     except Exception:
         service_name = ""
 
@@ -423,7 +423,8 @@ async def diagnose_node(state: ConversationalState) -> dict:
                             timeout=10.0
                         )
                     except Exception as e:
-                        logs = f"Error: {e}"
+                        logger.warning(f"[diagnose_node] fetch_recent_logs failed: {e}")
+                        logs = "No live logs available."
 
                 health = {}
                 if "check_service_health" in tool_map:
@@ -434,7 +435,8 @@ async def diagnose_node(state: ConversationalState) -> dict:
                         )
                         health = json.loads(health_str) if isinstance(health_str, str) else health_str
                     except Exception as e:
-                        health = {"error": str(e)}
+                        logger.warning(f"[diagnose_node] check_service_health failed: {e}")
+                        health = {"error": "Telemetry stream unavailable."}
 
                 deploys = []
                 if "get_recent_deploys" in tool_map:
@@ -449,7 +451,8 @@ async def diagnose_node(state: ConversationalState) -> dict:
                             else deploys_str.get("deploys", [])
                         )
                     except Exception as e:
-                        deploys = [{"error": str(e)}]
+                        logger.warning(f"[diagnose_node] get_recent_deploys failed: {e}")
+                        deploys = []
 
         return {
             "live_logs": str(logs),
