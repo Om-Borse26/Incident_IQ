@@ -452,6 +452,20 @@ body {
     font-size: 0.9em;
 }
 
+/* Typing Cursor Animation */
+.typing-cursor::after {
+    content: "▋";
+    display: inline-block;
+    color: var(--primary);
+    animation: blink 1s step-start infinite;
+    margin-left: 4px;
+    vertical-align: text-bottom;
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
 /* Grid */
 .grid-2 {
     display: grid;

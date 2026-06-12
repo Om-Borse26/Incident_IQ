@@ -180,7 +180,6 @@ form.addEventListener('submit', async (e) => {
     startLoading();
     // Prepare UI for streaming
     answerText.innerHTML = "";
-    let accumulatedAnswer = "";
     contentState.classList.remove('hidden');
 
     try {
@@ -197,47 +196,7 @@ form.addEventListener('submit', async (e) => {
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
-
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            
-            // SSE chunks are separated by double newlines
-            const parts = buffer.split('\n\n');
-            buffer = parts.pop(); // Keep the incomplete chunk in the buffer
-
-            for (const part of parts) {
-                if (part.startsWith('data: ')) {
-                    const jsonStr = part.slice(6);
-                    try {
-                        const event = JSON.parse(jsonStr);
-                        
-                        if (event.type === 'status') {
-                            const loaderText = loadingState.querySelector('p');
-                            if (loaderText) loaderText.textContent = event.message;
-                        } 
-                        else if (event.type === 'token') {
-                            accumulatedAnswer += event.content;
-                            // Partially parse markdown as it streams
-                            answerText.innerHTML = marked.parse(accumulatedAnswer);
-                        } 
-                        else if (event.type === 'final_result') {
-                            renderResult(event.data, accumulatedAnswer);
-                        } 
-                        else if (event.type === 'error') {
-                            throw new Error(event.message);
-                        }
-                    } catch (e) {
-                        console.error("Error parsing SSE JSON:", e, jsonStr);
-                    }
-                }
-            }
-        }
+        await handleStream(response);
         
         input.value = '';
         input.placeholder = 'Ask a follow-up question...';
@@ -249,6 +208,63 @@ form.addEventListener('submit', async (e) => {
         errorText.textContent = err.message || "Failed to analyze incident.";
     }
 });
+
+async function handleStream(response) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let accumulatedAnswer = "";
+
+    // Add typing cursor effect
+    answerText.classList.add('typing-cursor');
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // SSE chunks are separated by double newlines
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop(); // Keep the incomplete chunk in the buffer
+
+        for (const part of parts) {
+            if (part.startsWith('data: ')) {
+                const jsonStr = part.slice(6);
+                try {
+                    const event = JSON.parse(jsonStr);
+                    
+                    if (event.type === 'status') {
+                        const loaderText = loadingState.querySelector('p');
+                        if (loaderText) loaderText.textContent = event.message;
+                    } 
+                    else if (event.type === 'token') {
+                        accumulatedAnswer += event.content;
+                        // Partially parse markdown as it streams
+                        answerText.innerHTML = marked.parse(accumulatedAnswer);
+                        
+                        // Auto-scroll to bottom of window as text streams
+                        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                    } 
+                    else if (event.type === 'final_result') {
+                        answerText.classList.remove('typing-cursor');
+                        renderResult(event.data, accumulatedAnswer);
+                    } 
+                    else if (event.type === 'error') {
+                        answerText.classList.remove('typing-cursor');
+                        throw new Error(event.message);
+                    }
+                } catch (e) {
+                    if (e.message !== "Unexpected end of JSON input") {
+                        console.error("Error parsing SSE JSON:", e, jsonStr);
+                    }
+                }
+            }
+        }
+    }
+    
+    answerText.classList.remove('typing-cursor');
+}
 
 function renderResult(data, streamedAnswer = null) {
     stopLoading();
@@ -362,6 +378,8 @@ async function resumeGraph(action) {
 
     approvalBox.classList.add('hidden');
     startLoading();
+    answerText.innerHTML = "";
+    contentState.classList.remove('hidden');
     
     try {
         const response = await fetch(`${API_BASE_URL}/incident/analyze`, {
@@ -376,12 +394,11 @@ async function resumeGraph(action) {
 
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
         
-        const data = await response.json();
-        renderResult(data);
+        await handleStream(response);
 
     } catch (err) {
         console.error(err);
-        loadingState.classList.add('hidden');
+        stopLoading();
         errorState.classList.remove('hidden');
         errorText.textContent = "Failed to resume graph execution.";
     }
