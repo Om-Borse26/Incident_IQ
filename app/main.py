@@ -48,23 +48,18 @@ async def lifespan(app: FastAPI):
     raw_docs_dir = os.path.join(settings.DATA_DIR, "raw_documents")
     os.makedirs(raw_docs_dir, exist_ok=True)
 
-    # Set up Pub/Sub topics and subscriptions (idempotent — safe on every restart)
-    try:
-        from services.messaging.pubsub_client import pubsub_client
-        pubsub_client.create_topic_and_subscription_if_not_exists()
-        logger.info("[startup] Pub/Sub topics and subscriptions ready.")
-    except Exception as exc:
-        # Pub/Sub setup failure must NOT crash the API.
-        # The API can still serve queries; only new ingestion events will be lost
-        # if Pub/Sub is unreachable (e.g., emulator not running in local dev).
-        logger.warning(
-            "[startup] Pub/Sub setup failed: %s. "
-            "Ingestion events will not be published until Pub/Sub is available.",
-            exc,
-        )
+    # Start the Redis ingestion worker as a background process in the same container
+    # This allows Railway to run both the API and Worker using a single shared volume
+    import subprocess
+    import sys
+    logger.info("[startup] Spawning background ingestion worker...")
+    worker_process = subprocess.Popen([sys.executable, "-m", "services.messaging.ingestion_worker"])
 
     yield
-    logger.info("Application shutdown...")
+
+    logger.info("Application shutdown... terminating worker.")
+    worker_process.terminate()
+    worker_process.wait()
 
 app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 

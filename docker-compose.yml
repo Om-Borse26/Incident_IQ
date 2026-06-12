@@ -1,16 +1,12 @@
 version: "3.9"
 services:
-  # ─── Google Pub/Sub emulator ─────────────────────────────────────────────
-  pubsub-emulator:
-    image: google/cloud-sdk:latest
-    command: >
-      gcloud beta emulators pubsub start
-      --host-port=0.0.0.0:8085
-      --project=local-dev
+  # ─── Redis Message Broker ────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
     ports:
-      - "8085:8085"
+      - "6379:6379"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8085"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -28,15 +24,15 @@ services:
       - .env
     environment:
       - PORT=8080
-      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - REDIS_URL=redis://redis:6379/0
       - GCP_PROJECT_ID=local-dev
     depends_on:
-      pubsub-emulator:
+      redis:
         condition: service_healthy
 
   # ─── Ingestion worker ─────────────────────────────────────────────────────
   # In production this runs as a separate Railway service or Cloud Run job.
-  # It subscribes to the Pub/Sub topic and performs the heavy embedding work.
+  # It subscribes to the Redis queue and performs the heavy embedding work.
   worker:
     build: .
     command: python -m services.messaging.ingestion_worker
@@ -47,8 +43,8 @@ services:
     env_file:
       - .env
     environment:
-      - PUBSUB_EMULATOR_HOST=pubsub-emulator:8085
+      - REDIS_URL=redis://redis:6379/0
       - GCP_PROJECT_ID=local-dev
     depends_on:
-      pubsub-emulator:
+      redis:
         condition: service_healthy

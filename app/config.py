@@ -54,13 +54,10 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # ------------------------------------------------------------------
-    # Google Cloud Pub/Sub
+    # Redis (Messaging / Background Tasks)
     # ------------------------------------------------------------------
-    GCP_PROJECT_ID: str = "local-dev"
-    # If set, the SDK points at the local emulator instead of real GCP.
-    # Leave blank (or unset) to use real GCP credentials in production.
-    # Example: "localhost:8085"
-    PUBSUB_EMULATOR_HOST: str = ""
+    # Example: "redis://localhost:6379/0" or standard Railway REDIS_URL
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     # ------------------------------------------------------------------
     # Validation

@@ -156,8 +156,11 @@ class DiagnosticExtraction(BaseModel):
 
 class ServiceExtraction(BaseModel):
     service_name: str = Field(
-        description="The name of the service mentioned in the query. "
-                    "For example: 'api-gateway', 'checkout-service'"
+        description="The normalized name of the service mentioned in the query. "
+                    "You MUST fix typos, spelling errors, and informal names. "
+                    "Always format it in lowercase with hyphens. "
+                    "For example: 'notif service' -> 'notification-service', "
+                    "'checkout svc' -> 'checkout-service', 'api gateway' -> 'api-gateway'."
     )
 
 

@@ -197,10 +197,18 @@ def ingest_incidents() -> None:
         print("      Deleted existing collection for clean re-ingestion.")
     except Exception:
         pass  # Collection does not exist yet -- that is fine
+    # Generate deterministic IDs
+    chunk_ids = []
+    for i, chunk in enumerate(chunks):
+        source = chunk.metadata.get("source", "unknown")
+        # Extract filename from path for cleaner IDs
+        filename = os.path.basename(source)
+        chunk_ids.append(f"{filename}_chunk_{i}")
 
     Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
+        ids=chunk_ids,
         collection_name=COLLECTION_NAME,
         persist_directory=str(CHROMA_DIR),
         client_settings=chromadb.Settings(anonymized_telemetry=False),
@@ -233,6 +241,9 @@ def ingest_single_document(content: str, filename: str) -> None:
     
     chunks = splitter.create_documents([doc.page_content], metadatas=[meta])
     
+    # Generate deterministic IDs for deduplication
+    chunk_ids = [f"{filename}_chunk_{i}" for i in range(len(chunks))]
+    
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
     
     # We instantiate Chroma pointing to the same directory
@@ -243,7 +254,7 @@ def ingest_single_document(content: str, filename: str) -> None:
         embedding_function=embeddings,
         client_settings=chromadb.Settings(anonymized_telemetry=False)
     )
-    vectorstore.add_documents(chunks)
+    vectorstore.add_documents(chunks, ids=chunk_ids)
     logger.info(f"[ingest] Successfully ingested {filename} ({len(chunks)} chunks)")
 
 # ---------------------------------------------------------------------------
