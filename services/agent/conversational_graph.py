@@ -570,8 +570,12 @@ async def generate_answer_node(state: ConversationalState) -> dict:
 
     history_text = _format_history_for_prompt(state.get("chat_history", []))
 
+    # Extract raw documents for strict context
+    raw_vector_results = json.dumps(state.get('retrieved_incidents', []), indent=2)
+    raw_tree_results = json.dumps(state.get('vectorless_results', []), indent=2)
+
     prompt = f"""You are IncidentIQ, an expert SRE diagnostic agent and friendly copilot.
-Generate the final markdown text answer based on the extracted diagnostics.
+Generate the final markdown text answer based on the extracted diagnostics and raw historical context.
 
 CONVERSATION HISTORY:
 {history_text}
@@ -581,17 +585,20 @@ EXTRACTED MODE: {state.get('mode')}
 SUGGESTED FIXES: {json.dumps(state.get('suggested_fixes', []))}
 REASONING: {state.get('reasoning')}
 
+RAW HISTORICAL CONTEXT (Strictly ground your answer on these):
+Vector Results: {raw_vector_results}
+Tree Results: {raw_tree_results}
+
 Original User Message: {state['query']}
 
 TONE INSTRUCTIONS:
-Speak to the user like a friendly, empathetic Senior Engineer.
-Use rich markdown formatting! Include emojis (🔴, 🟢, 💡, 📊).
-Explain *why* the issue might be occurring.
-1. Mention the similar past incidents to build confidence.
-2. Use markdown line breaks to format nicely.
-
-If this is a follow-up, acknowledge the context.
-If mode is 'unknown', say so politely. Do not speculate.
+- Adapt your conversational tone and style (friendly, formal, joking) to match the USER MOOD.
+- However, your technical facts MUST be strictly grounded in the RAW HISTORICAL CONTEXT above. 
+- Do not invent fixes or fluff the technical analysis. 
+- When explaining root causes or suggesting fixes, pull the exact details, timestamps, or code from the raw context.
+- Quote directly from the source documents when providing fixes.
+- Use rich markdown formatting and emojis to format your answer nicely.
+- If mode is 'unknown', say so politely. Do not speculate.
 """
     try:
         res = await llm.ainvoke(prompt)
