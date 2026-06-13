@@ -37,7 +37,13 @@ class IngestionWorker:
     def __init__(self):
         self._redis_client = None
         try:
-            self._redis_client = redis.from_url(settings.REDIS_URL, decode_responses=True)
+            # Added health_check_interval=30 to prevent "Timeout reading from socket"
+            # on idle connections in Railway.
+            self._redis_client = redis.from_url(
+                settings.REDIS_URL, 
+                decode_responses=True,
+                health_check_interval=30
+            )
             self._redis_client.ping()
             logger.info(f"[worker] Connected to Redis at {settings.REDIS_URL}")
         except Exception as e:
