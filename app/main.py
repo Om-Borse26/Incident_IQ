@@ -230,7 +230,11 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
 
     async def stream_graph_execution():
         try:
-            async with AsyncSqliteSaver.from_conn_string("checkpoints.sqlite") as memory:
+            import os
+            from app.config import settings
+            db_path = os.path.join(settings.DATA_DIR, "checkpoints.sqlite")
+            
+            async with AsyncSqliteSaver.from_conn_string(db_path) as memory:
                 conversational_graph = conversational_workflow.compile(checkpointer=memory)
 
                 if body.resume_action:
