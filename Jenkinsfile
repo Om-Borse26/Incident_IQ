@@ -139,7 +139,7 @@ pipeline {
                     )
                 ]) {
                     script {
-                        // Write the .env content inline — delivered via SSH, never stored in the repo
+                        // Write the .env content inline
                         def envContent = """LLM_FALLBACK_ORDER=gemini,groq
 GROQ_API_KEY=${env.GROQ_API_KEY ?: ''}
 GROQ_MODEL=llama-3.3-70b-versatile
@@ -157,42 +157,56 @@ DATA_DIR=/data
 """
                         writeFile file: 'remote.env', text: envContent
 
-                        sh """
-                            echo "--- Delivering .env to EC2 ---"
-                            scp -i ${EC2_KEY} -o StrictHostKeyChecking=no \
-                                remote.env ${EC2_USER}@${EC2_HOST}:/home/ec2-user/.env
+                        if (isUnix()) {
+                            sh """
+                                echo "--- Delivering .env to EC2 ---"
+                                scp -i ${EC2_KEY} -o StrictHostKeyChecking=no \
+                                    remote.env ${EC2_USER}@${EC2_HOST}:/home/ec2-user/.env
 
-                            echo "--- Pulling new image and restarting container on EC2 ---"
-                            ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
-                                set -e
+                                echo "--- Pulling new image and restarting container on EC2 ---"
+                                ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                                    set -e
+                                    echo "Logging into ECR on EC2..."
+                                    aws ecr get-login-password --region ap-south-1 | \
+                                        docker login --username AWS --password-stdin ${ECR_REPO}
 
-                                echo "Logging into ECR on EC2..."
-                                aws ecr get-login-password --region ap-south-1 | \
-                                    docker login --username AWS --password-stdin ${ECR_REPO}
+                                    echo "Pulling latest image..."
+                                    docker pull ${ECR_REPO}:latest
 
-                                echo "Pulling latest image..."
-                                docker pull ${ECR_REPO}:latest
+                                    echo "Stopping old container (if any)..."
+                                    docker stop incidentiq 2>/dev/null || true
+                                    docker rm   incidentiq 2>/dev/null || true
 
-                                echo "Stopping old container (if any)..."
-                                docker stop incidentiq 2>/dev/null || true
-                                docker rm   incidentiq 2>/dev/null || true
+                                    echo "Starting new container..."
+                                    docker run -d \
+                                        --name incidentiq \
+                                        --restart unless-stopped \
+                                        --env-file /home/ec2-user/.env \
+                                        -p 8080:8080 \
+                                        -v /home/ec2-user/data:/data \
+                                        ${ECR_REPO}:latest
 
-                                echo "Starting new container..."
-                                docker run -d \
-                                    --name incidentiq \
-                                    --restart unless-stopped \
-                                    --env-file /home/ec2-user/.env \
-                                    -p 8080:8080 \
-                                    -v /home/ec2-user/data:/data \
-                                    ${ECR_REPO}:latest
+                                    echo "Container started."
+                                    docker ps --filter name=incidentiq
+                                '
+                            """
+                        } else {
+                            // Windows batch execution
+                            bat """
+                                echo --- Delivering .env to EC2 ---
+                                scp -i "%EC2_KEY%" -o StrictHostKeyChecking=no remote.env %EC2_USER%@%EC2_HOST%:/home/ec2-user/.env
 
-                                echo "Container started."
-                                docker ps --filter name=incidentiq
-                            '
-                        """
+                                echo --- Pulling new image and restarting container on EC2 ---
+                                ssh -i "%EC2_KEY%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_HOST% "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin %ECR_REPO% && docker pull %ECR_REPO%:latest && docker stop incidentiq 2>nul || true && docker rm incidentiq 2>nul || true && docker run -d --name incidentiq --restart unless-stopped --env-file /home/ec2-user/.env -p 8080:8080 -v /home/ec2-user/data:/data %ECR_REPO%:latest"
+                            """
+                        }
 
                         // Clean up local env file so secrets are not left on disk
-                        sh 'rm -f remote.env'
+                        if (isUnix()) {
+                            sh 'rm -f remote.env'
+                        } else {
+                            bat 'del remote.env'
+                        }
                     }
                 }
             }
