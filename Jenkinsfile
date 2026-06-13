@@ -193,6 +193,12 @@ DATA_DIR=/data
                         } else {
                             // Windows batch execution
                             bat """
+                                echo --- Fixing SSH Key Permissions for Windows OpenSSH ---
+                                icacls "%EC2_KEY%" /inheritance:r
+                                icacls "%EC2_KEY%" /grant:r *S-1-5-18:F
+                                icacls "%EC2_KEY%" /grant:r *S-1-5-32-544:F
+                                icacls "%EC2_KEY%" /grant:r "%USERNAME%":F
+
                                 echo --- Delivering .env to EC2 ---
                                 scp -i "%EC2_KEY%" -o StrictHostKeyChecking=no remote.env %EC2_USER%@%EC2_HOST%:/home/ec2-user/.env
 
