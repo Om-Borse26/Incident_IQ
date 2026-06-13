@@ -46,12 +46,10 @@ To be accepted, the uploaded document MUST contain:
 2. A Fix, Resolution, or Mitigation (how it was solved).
 
 CRITICAL DEDUPLICATION RULE:
-Below are snippets of existing documents already in the database.
-Compare the uploaded document to these existing documents.
-- If the uploaded document is an EXACT duplicate, REJECT it (is_valid=False).
-- If the uploaded document has the EXACT same symptoms AND the exact same fix, REJECT it.
-- If the uploaded document has the SAME symptoms but offers a DIFFERENT fix/solution, ACCEPT it (is_valid=True).
-- If it has DIFFERENT symptoms but the same fix, ACCEPT it.
+Below are snippets of existing documents already in the database. Note that these are just PARTIAL snippets, so they might not contain the full fix.
+Compare the uploaded document to these existing snippets.
+- If the uploaded document appears to be describing the EXACT SAME incident as any of the snippets (e.g., same title, same core issue), REJECT it (is_valid=False).
+- Only accept it if it is a genuinely different incident, or if it provides a completely different alternative fix to an existing problem.
 
 Existing Documents in Database:
 ---
