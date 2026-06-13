@@ -42,17 +42,26 @@ async def lifespan(app: FastAPI):
         if not os.path.exists(vol_tree) and os.path.exists(app_tree):
             shutil.copytree(app_tree, vol_tree)
 
-    # Future: Cloud Run migration would add GCS snapshot restore here.
+    # EC2: /data is mounted from the host directory /home/ec2-user/data.
+    # This guarantees data persists across container restarts and redeploys.
     
     # Ensure raw_documents directory exists
     raw_docs_dir = os.path.join(settings.DATA_DIR, "raw_documents")
     os.makedirs(raw_docs_dir, exist_ok=True)
 
-    # Start the Redis ingestion worker as a background process in the same container
-    # This allows Railway to run both the API and Worker using a single shared volume
+    # Ensure SQS queues exist (idempotent — safe to call every startup)
+    try:
+        from services.messaging.pubsub_client import pubsub_client
+        pubsub_client.create_topic_and_subscription_if_not_exists()
+        logger.info("[startup] SQS queues ready.")
+    except Exception as e:
+        logger.warning("[startup] SQS setup failed: %s. Ingestion events will not be published until SQS is available.", e)
+
+    # Start the SQS ingestion worker as a background process in the same container.
+    # Shares the /data volume with the FastAPI process.
     import subprocess
     import sys
-    logger.info("[startup] Spawning background ingestion worker...")
+    logger.info("[startup] Spawning background SQS ingestion worker...")
     worker_process = subprocess.Popen([sys.executable, "-m", "services.messaging.ingestion_worker"])
 
     yield

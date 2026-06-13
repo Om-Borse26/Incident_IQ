@@ -1,50 +1,14 @@
 version: "3.9"
 services:
-  # ─── Redis Message Broker ────────────────────────────────────────────────
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ─── FastAPI application ──────────────────────────────────────────────────
+  # ─── FastAPI application + Ingestion Worker (subprocess) ──────────────────
   api:
     build: .
     ports:
       - "8000:8080"
     volumes:
-      - ./chroma_db:/app/chroma_db
-      - ./tree_index:/app/tree_index
-      - ./data:/app/data          # shared raw_documents volume
+      - ./data:/data   # persistent data: chroma_db, tree_index, raw_documents, checkpoints.sqlite
     env_file:
       - .env
     environment:
       - PORT=8080
-      - REDIS_URL=redis://redis:6379/0
-      - GCP_PROJECT_ID=local-dev
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  # ─── Ingestion worker ─────────────────────────────────────────────────────
-  # In production this runs as a separate Railway service or Cloud Run job.
-  # It subscribes to the Redis queue and performs the heavy embedding work.
-  worker:
-    build: .
-    command: python -m services.messaging.ingestion_worker
-    volumes:
-      - ./chroma_db:/app/chroma_db   # same ChromaDB as the API
-      - ./tree_index:/app/tree_index
-      - ./data:/app/data              # shared raw_documents so worker can read saved files
-    env_file:
-      - .env
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - GCP_PROJECT_ID=local-dev
-    depends_on:
-      redis:
-        condition: service_healthy
+      - DATA_DIR=/data

@@ -45,6 +45,42 @@
     "section_text": "- Add a pre-flight check to the Terraform CI pipeline that validates ALB health check paths against running service endpoint inventory before applying.\n- Enforce the `/health` standard in the service template repository; block new service scaffolding that doesn't include it.\n- Create a canary health-check test in the smoke-test suite that verifies ALB target group health after every infrastructure deployment.\n- Add a 5-minute grace period after Terraform applies before any automated load-balancer draining."
   },
   {
+    "node_id": "auth-service-high-cpu-bcrypt-sec0",
+    "incident_title": "INC-0102: Auth Service High CPU and Timeouts",
+    "service": "",
+    "source_file": "auth-service-high-cpu-bcrypt.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0102: Auth Service High CPU and Timeouts Service: auth service",
+    "section_text": "# INC-0102: Auth Service High CPU and Timeouts\n**Service:** auth-service"
+  },
+  {
+    "node_id": "auth-service-high-cpu-bcrypt-sec1",
+    "incident_title": "INC-0102: Auth Service High CPU and Timeouts",
+    "service": "",
+    "source_file": "auth-service-high-cpu-bcrypt.md",
+    "section_heading": "Symptoms",
+    "section_summary": "CPU utilization at 100%. Login requests timing out after 30 seconds. Intermittent 502 Bad Gateway errors.",
+    "section_text": "- CPU utilization at 100%.\n- Login requests timing out after 30 seconds.\n- Intermittent 502 Bad Gateway errors."
+  },
+  {
+    "node_id": "auth-service-high-cpu-bcrypt-sec2",
+    "incident_title": "INC-0102: Auth Service High CPU and Timeouts",
+    "service": "",
+    "source_file": "auth-service-high-cpu-bcrypt.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A security patch mistakenly increased the bcrypt work factor from 10 to 14, causing password hashing to take significantly longer and exhaust CPU reso...",
+    "section_text": "A security patch mistakenly increased the bcrypt work factor from 10 to 14, causing password hashing to take significantly longer and exhaust CPU resources."
+  },
+  {
+    "node_id": "auth-service-high-cpu-bcrypt-sec3",
+    "incident_title": "INC-0102: Auth Service High CPU and Timeouts",
+    "service": "",
+    "source_file": "auth-service-high-cpu-bcrypt.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Reverted the bcrypt work factor back to 10. 2. Invalidated active sessions to force a smooth re login curve.",
+    "section_text": "1. Reverted the bcrypt work factor back to 10.\n2. Invalidated active sessions to force a smooth re-login curve."
+  },
+  {
     "node_id": "checkout-service-db-pool-exhaustion-sec0",
     "incident_title": "INC-0041: Checkout Service 500s from DB Connection Pool Exhaustion",
     "service": "checkout-service",
@@ -88,6 +124,114 @@
     "section_heading": "Prevention",
     "section_summary": "Add a missing index on orders.created at for the reporting query (ticket: ENG 2204). Pre scale DB pool size 2 hours before known traffic events using ...",
     "section_text": "- Add a missing index on `orders.created_at` for the reporting query (ticket: ENG-2204).\n- Pre-scale DB pool size 2 hours before known traffic events using the launch calendar.\n- Implement a read-replica for analytics queries to isolate OLAP traffic from OLTP.\n- Set `connectionTimeout` to 3s (not 30s) and surface a proper 503 + retry-after header to callers instead of a misleading 500."
+  },
+  {
+    "node_id": "frontend-app-memory-leak-sec0",
+    "incident_title": "INC-0109: Frontend App Browser Memory Leak",
+    "service": "",
+    "source_file": "frontend-app-memory-leak.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0109: Frontend App Browser Memory Leak Service: frontend app",
+    "section_text": "# INC-0109: Frontend App Browser Memory Leak\n**Service:** frontend-app"
+  },
+  {
+    "node_id": "frontend-app-memory-leak-sec1",
+    "incident_title": "INC-0109: Frontend App Browser Memory Leak",
+    "service": "",
+    "source_file": "frontend-app-memory-leak.md",
+    "section_heading": "Symptoms",
+    "section_summary": "Users reporting the web app freezes after 30 minutes of use. Browser tab memory usage exceeds 2GB.",
+    "section_text": "- Users reporting the web app freezes after 30 minutes of use.\n- Browser tab memory usage exceeds 2GB."
+  },
+  {
+    "node_id": "frontend-app-memory-leak-sec2",
+    "incident_title": "INC-0109: Frontend App Browser Memory Leak",
+    "service": "",
+    "source_file": "frontend-app-memory-leak.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A charting library was retaining event listeners on DOM elements that were destroyed during React re renders, causing a detached DOM node memory leak.",
+    "section_text": "A charting library was retaining event listeners on DOM elements that were destroyed during React re-renders, causing a detached DOM node memory leak."
+  },
+  {
+    "node_id": "frontend-app-memory-leak-sec3",
+    "incident_title": "INC-0109: Frontend App Browser Memory Leak",
+    "service": "",
+    "source_file": "frontend-app-memory-leak.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Updated the charting library component to properly unbind event listeners in the useEffect cleanup function. 2. Added automated memory leak tests u...",
+    "section_text": "1. Updated the charting library component to properly unbind event listeners in the `useEffect` cleanup function.\n2. Added automated memory leak tests using Puppeteer."
+  },
+  {
+    "node_id": "inventory-service-db-lock-sec0",
+    "incident_title": "INC-0105: Inventory Service Database Deadlocks",
+    "service": "",
+    "source_file": "inventory-service-db-lock.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0105: Inventory Service Database Deadlocks Service: inventory service",
+    "section_text": "# INC-0105: Inventory Service Database Deadlocks\n**Service:** inventory-service"
+  },
+  {
+    "node_id": "inventory-service-db-lock-sec1",
+    "incident_title": "INC-0105: Inventory Service Database Deadlocks",
+    "service": "",
+    "source_file": "inventory-service-db-lock.md",
+    "section_heading": "Symptoms",
+    "section_summary": "Service completely unresponsive. Database showing hundreds of active locks. Order creation failing.",
+    "section_text": "- Service completely unresponsive.\n- Database showing hundreds of active locks.\n- Order creation failing."
+  },
+  {
+    "node_id": "inventory-service-db-lock-sec2",
+    "incident_title": "INC-0105: Inventory Service Database Deadlocks",
+    "service": "",
+    "source_file": "inventory-service-db-lock.md",
+    "section_heading": "Root Cause",
+    "section_summary": "Concurrent updates to the same inventory SKU rows caused database deadlocks. The application did not have retry logic for DeadlockFound exceptions.",
+    "section_text": "Concurrent updates to the same inventory SKU rows caused database deadlocks. The application did not have retry logic for `DeadlockFound` exceptions."
+  },
+  {
+    "node_id": "inventory-service-db-lock-sec3",
+    "incident_title": "INC-0105: Inventory Service Database Deadlocks",
+    "service": "",
+    "source_file": "inventory-service-db-lock.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Sorted items by SKU ID before acquiring locks to prevent circular waits. 2. Added application level retry logic for transient database exceptions.",
+    "section_text": "1. Sorted items by SKU ID before acquiring locks to prevent circular waits.\n2. Added application-level retry logic for transient database exceptions."
+  },
+  {
+    "node_id": "notification-service-high-cpu-xml-sec0",
+    "incident_title": "INC-0104: Notification Service High CPU on XML Parsing",
+    "service": "",
+    "source_file": "notification-service-high-cpu-xml.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0104: Notification Service High CPU on XML Parsing Service: notification service",
+    "section_text": "# INC-0104: Notification Service High CPU on XML Parsing\n**Service:** notification-service"
+  },
+  {
+    "node_id": "notification-service-high-cpu-xml-sec1",
+    "incident_title": "INC-0104: Notification Service High CPU on XML Parsing",
+    "service": "",
+    "source_file": "notification-service-high-cpu-xml.md",
+    "section_heading": "Symptoms",
+    "section_summary": "CPU utilization spiked to 95%. Message queue backlog increasing. Delays in sending SMS notifications.",
+    "section_text": "- CPU utilization spiked to 95%.\n- Message queue backlog increasing.\n- Delays in sending SMS notifications."
+  },
+  {
+    "node_id": "notification-service-high-cpu-xml-sec2",
+    "incident_title": "INC-0104: Notification Service High CPU on XML Parsing",
+    "service": "",
+    "source_file": "notification-service-high-cpu-xml.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A partner started sending extremely large (50MB) XML payloads for bulk notifications. The DOM parser loaded the entire XML into memory, causing high C...",
+    "section_text": "A partner started sending extremely large (50MB) XML payloads for bulk notifications. The DOM parser loaded the entire XML into memory, causing high CPU and garbage collection pauses."
+  },
+  {
+    "node_id": "notification-service-high-cpu-xml-sec3",
+    "incident_title": "INC-0104: Notification Service High CPU on XML Parsing",
+    "service": "",
+    "source_file": "notification-service-high-cpu-xml.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Switched from a DOM parser to a streaming SAX parser. 2. Implemented a maximum payload size limit of 5MB at the API gateway.",
+    "section_text": "1. Switched from a DOM parser to a streaming SAX parser.\n2. Implemented a maximum payload size limit of 5MB at the API gateway."
   },
   {
     "node_id": "notification-service-queue-backlog-sec0",
@@ -180,6 +324,186 @@
     "section_text": "- Implement Resilience4j `CircuitBreaker` on all external payment gateway calls; open after 5 consecutive timeouts in 30s.\n- Add a `Bulkhead` annotation limiting concurrent payment calls to 30, queued to 10, with a fallback that returns `PAYMENT_PENDING` and retries async.\n- Reduce all external HTTP client timeouts to `connectTimeout=2s`, `readTimeout=10s`.\n- Subscribe to Stripe status page webhooks and automatically enable a graceful degradation mode (queue payments for async retry) when degradation is detected."
   },
   {
+    "node_id": "payment-service-gateway-timeout-sec0",
+    "incident_title": "INC-0103: Payment Service Third-Party Gateway Timeouts",
+    "service": "",
+    "source_file": "payment-service-gateway-timeout.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0103: Payment Service Third Party Gateway Timeouts Service: payment service",
+    "section_text": "# INC-0103: Payment Service Third-Party Gateway Timeouts\n**Service:** payment-service"
+  },
+  {
+    "node_id": "payment-service-gateway-timeout-sec1",
+    "incident_title": "INC-0103: Payment Service Third-Party Gateway Timeouts",
+    "service": "",
+    "source_file": "payment-service-gateway-timeout.md",
+    "section_heading": "Symptoms",
+    "section_summary": "Transactions failing with 'Gateway Timeout'. Elevated error rates on external API calls. No high CPU or memory issues observed.",
+    "section_text": "- Transactions failing with 'Gateway Timeout'.\n- Elevated error rates on external API calls.\n- No high CPU or memory issues observed."
+  },
+  {
+    "node_id": "payment-service-gateway-timeout-sec2",
+    "incident_title": "INC-0103: Payment Service Third-Party Gateway Timeouts",
+    "service": "",
+    "source_file": "payment-service-gateway-timeout.md",
+    "section_heading": "Root Cause",
+    "section_summary": "The external payment gateway provider (Stripe) rate limited our main NAT gateway IP due to a sudden spike in retry requests from a bug in the mobile a...",
+    "section_text": "The external payment gateway provider (Stripe) rate-limited our main NAT gateway IP due to a sudden spike in retry requests from a bug in the mobile app."
+  },
+  {
+    "node_id": "payment-service-gateway-timeout-sec3",
+    "incident_title": "INC-0103: Payment Service Third-Party Gateway Timeouts",
+    "service": "",
+    "source_file": "payment-service-gateway-timeout.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Implemented exponential backoff with jitter on all external API calls. 2. Contacted the gateway provider to temporarily lift the rate limit. 3. Pus...",
+    "section_text": "1. Implemented exponential backoff with jitter on all external API calls.\n2. Contacted the gateway provider to temporarily lift the rate limit.\n3. Pushed a hotfix to the mobile app to stop aggressive retries."
+  },
+  {
+    "node_id": "payment-service-high-cpu-regex-sec0",
+    "incident_title": "INC-0100: Payment Service High CPU Utilization",
+    "service": "",
+    "source_file": "payment-service-high-cpu-regex.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0100: Payment Service High CPU Utilization Service: payment service",
+    "section_text": "# INC-0100: Payment Service High CPU Utilization\n**Service:** payment-service"
+  },
+  {
+    "node_id": "payment-service-high-cpu-regex-sec1",
+    "incident_title": "INC-0100: Payment Service High CPU Utilization",
+    "service": "",
+    "source_file": "payment-service-high-cpu-regex.md",
+    "section_heading": "Symptoms",
+    "section_summary": "CPU utilization spiked to 99% on all payment service pods. Latency increased from 50ms to 5000ms. Alerts fired for HighCpuUsage .",
+    "section_text": "- CPU utilization spiked to 99% on all payment-service pods.\n- Latency increased from 50ms to 5000ms.\n- Alerts fired for `HighCpuUsage`."
+  },
+  {
+    "node_id": "payment-service-high-cpu-regex-sec2",
+    "incident_title": "INC-0100: Payment Service High CPU Utilization",
+    "service": "",
+    "source_file": "payment-service-high-cpu-regex.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A recent deployment introduced a complex regular expression for validating international transaction notes. The regex suffered from catastrophic backt...",
+    "section_text": "A recent deployment introduced a complex regular expression for validating international transaction notes. The regex suffered from catastrophic backtracking when processing edge-case inputs."
+  },
+  {
+    "node_id": "payment-service-high-cpu-regex-sec3",
+    "incident_title": "INC-0100: Payment Service High CPU Utilization",
+    "service": "",
+    "source_file": "payment-service-high-cpu-regex.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Reverted the regex to a simpler, non backtracking version. 2. Added input length validation before applying regex. 3. Scaled up the pods temporaril...",
+    "section_text": "1. Reverted the regex to a simpler, non-backtracking version.\n2. Added input length validation before applying regex.\n3. Scaled up the pods temporarily to process the backlog."
+  },
+  {
+    "node_id": "payment-service-kafka-lag-sec0",
+    "incident_title": "INC-0108: Payment Service Kafka Consumer Lag",
+    "service": "",
+    "source_file": "payment-service-kafka-lag.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0108: Payment Service Kafka Consumer Lag Service: payment service",
+    "section_text": "# INC-0108: Payment Service Kafka Consumer Lag\n**Service:** payment-service"
+  },
+  {
+    "node_id": "payment-service-kafka-lag-sec1",
+    "incident_title": "INC-0108: Payment Service Kafka Consumer Lag",
+    "service": "",
+    "source_file": "payment-service-kafka-lag.md",
+    "section_heading": "Symptoms",
+    "section_summary": "Receipts are being sent 2 hours late. Kafka consumer lag for topic payment completed exceeded 100,000. CPU and memory are normal.",
+    "section_text": "- Receipts are being sent 2 hours late.\n- Kafka consumer lag for topic `payment-completed` exceeded 100,000.\n- CPU and memory are normal."
+  },
+  {
+    "node_id": "payment-service-kafka-lag-sec2",
+    "incident_title": "INC-0108: Payment Service Kafka Consumer Lag",
+    "service": "",
+    "source_file": "payment-service-kafka-lag.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A single malformed message in partition 3 caused the consumer to throw a DeserializationException in a continuous loop, blocking progress for the enti...",
+    "section_text": "A single malformed message in partition 3 caused the consumer to throw a `DeserializationException` in a continuous loop, blocking progress for the entire partition."
+  },
+  {
+    "node_id": "payment-service-kafka-lag-sec3",
+    "incident_title": "INC-0108: Payment Service Kafka Consumer Lag",
+    "service": "",
+    "source_file": "payment-service-kafka-lag.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Configured the consumer to log and skip un deserializable messages instead of crashing. 2. Manually advanced the consumer offset for partition 3 to...",
+    "section_text": "1. Configured the consumer to log and skip un-deserializable messages instead of crashing.\n2. Manually advanced the consumer offset for partition 3 to bypass the poison pill."
+  },
+  {
+    "node_id": "payment-service-memory-leak-db-sec0",
+    "incident_title": "INC-0101: Payment Service Memory Leak and OOM",
+    "service": "",
+    "source_file": "payment-service-memory-leak-db.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0101: Payment Service Memory Leak and OOM Service: payment service",
+    "section_text": "# INC-0101: Payment Service Memory Leak and OOM\n**Service:** payment-service"
+  },
+  {
+    "node_id": "payment-service-memory-leak-db-sec1",
+    "incident_title": "INC-0101: Payment Service Memory Leak and OOM",
+    "service": "",
+    "source_file": "payment-service-memory-leak-db.md",
+    "section_heading": "Symptoms",
+    "section_summary": "Pods are continuously crashing with OutOfMemory (OOM) errors. Gradual memory increase over 4 hours before crash. High number of open database connecti...",
+    "section_text": "- Pods are continuously crashing with OutOfMemory (OOM) errors.\n- Gradual memory increase over 4 hours before crash.\n- High number of open database connections."
+  },
+  {
+    "node_id": "payment-service-memory-leak-db-sec2",
+    "incident_title": "INC-0101: Payment Service Memory Leak and OOM",
+    "service": "",
+    "source_file": "payment-service-memory-leak-db.md",
+    "section_heading": "Root Cause",
+    "section_summary": "The transaction logger module was opening a new database connection for every transaction but failing to close it if the transaction failed validation...",
+    "section_text": "The transaction logger module was opening a new database connection for every transaction but failing to close it if the transaction failed validation, leading to connection exhaustion and memory leaks."
+  },
+  {
+    "node_id": "payment-service-memory-leak-db-sec3",
+    "incident_title": "INC-0101: Payment Service Memory Leak and OOM",
+    "service": "",
+    "source_file": "payment-service-memory-leak-db.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Implemented a robust connection pool (HikariCP). 2. Wrapped database calls in try with resources to ensure connections are always closed. 3. Restar...",
+    "section_text": "1. Implemented a robust connection pool (HikariCP).\n2. Wrapped database calls in `try-with-resources` to ensure connections are always closed.\n3. Restarted all pods to clear memory."
+  },
+  {
+    "node_id": "search-service-elasticsearch-oom-sec0",
+    "incident_title": "INC-0107: Search Service Elasticsearch OOM",
+    "service": "",
+    "source_file": "search-service-elasticsearch-oom.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0107: Search Service Elasticsearch OOM Service: search service",
+    "section_text": "# INC-0107: Search Service Elasticsearch OOM\n**Service:** search-service"
+  },
+  {
+    "node_id": "search-service-elasticsearch-oom-sec1",
+    "incident_title": "INC-0107: Search Service Elasticsearch OOM",
+    "service": "",
+    "source_file": "search-service-elasticsearch-oom.md",
+    "section_heading": "Symptoms",
+    "section_summary": "Search queries returning 500 errors. Elasticsearch nodes dropping out of the cluster. JVM Heap usage at 100%.",
+    "section_text": "- Search queries returning 500 errors.\n- Elasticsearch nodes dropping out of the cluster.\n- JVM Heap usage at 100%."
+  },
+  {
+    "node_id": "search-service-elasticsearch-oom-sec2",
+    "incident_title": "INC-0107: Search Service Elasticsearch OOM",
+    "service": "",
+    "source_file": "search-service-elasticsearch-oom.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A user executed a massive wildcard query ( a b c ) that expanded to millions of terms, exhausting the JVM heap and crashing the node.",
+    "section_text": "A user executed a massive wildcard query (`*a*b*c*`) that expanded to millions of terms, exhausting the JVM heap and crashing the node."
+  },
+  {
+    "node_id": "search-service-elasticsearch-oom-sec3",
+    "incident_title": "INC-0107: Search Service Elasticsearch OOM",
+    "service": "",
+    "source_file": "search-service-elasticsearch-oom.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Disabled leading wildcards in search queries. 2. Implemented a timeout of 5 seconds on all Elasticsearch queries. 3. Increased JVM heap size for da...",
+    "section_text": "1. Disabled leading wildcards in search queries.\n2. Implemented a timeout of 5 seconds on all Elasticsearch queries.\n3. Increased JVM heap size for data nodes."
+  },
+  {
     "node_id": "user-auth-redis-oom-sec0",
     "incident_title": "INC-0067: User Auth Service Outage from Redis Out-of-Memory",
     "service": "user-auth-service",
@@ -223,6 +547,42 @@
     "section_heading": "Prevention",
     "section_summary": "Change Redis eviction policy from noeviction to allkeys lru as the permanent default for session stores. Add Redis memory usage alert at 70% and 85% t...",
     "section_text": "- Change Redis eviction policy from `noeviction` to `allkeys-lru` as the permanent default for session stores.\n- Add Redis memory usage alert at 70% and 85% thresholds (previously only had a 95% alert).\n- Add integration test asserting that every stored key has a TTL; fail CI if any `SET` is called without a subsequent `EXPIRE`.\n- Audit all Redis `SET` calls in auth codebase for missing TTL (ticket: SEC-441).\n- Increase Redis instance to 4 GB as a buffer while the root-cause fix is validated."
+  },
+  {
+    "node_id": "user-profile-service-redis-eviction-sec0",
+    "incident_title": "INC-0106: User Profile Service High Latency",
+    "service": "",
+    "source_file": "user-profile-service-redis-eviction.md",
+    "section_heading": "Introduction",
+    "section_summary": "INC 0106: User Profile Service High Latency Service: user profile service",
+    "section_text": "# INC-0106: User Profile Service High Latency\n**Service:** user-profile-service"
+  },
+  {
+    "node_id": "user-profile-service-redis-eviction-sec1",
+    "incident_title": "INC-0106: User Profile Service High Latency",
+    "service": "",
+    "source_file": "user-profile-service-redis-eviction.md",
+    "section_heading": "Symptoms",
+    "section_summary": "Latency spiked to 2000ms. Redis cache hit rate dropped from 99% to 40%. Increased load on the primary database.",
+    "section_text": "- Latency spiked to 2000ms.\n- Redis cache hit rate dropped from 99% to 40%.\n- Increased load on the primary database."
+  },
+  {
+    "node_id": "user-profile-service-redis-eviction-sec2",
+    "incident_title": "INC-0106: User Profile Service High Latency",
+    "service": "",
+    "source_file": "user-profile-service-redis-eviction.md",
+    "section_heading": "Root Cause",
+    "section_summary": "A new feature cached large user history blobs without a TTL, causing Redis to reach its maxmemory limit and aggressively evict frequently used profile...",
+    "section_text": "A new feature cached large user history blobs without a TTL, causing Redis to reach its `maxmemory` limit and aggressively evict frequently used profile keys (allkeys-lru)."
+  },
+  {
+    "node_id": "user-profile-service-redis-eviction-sec3",
+    "incident_title": "INC-0106: User Profile Service High Latency",
+    "service": "",
+    "source_file": "user-profile-service-redis-eviction.md",
+    "section_heading": "Resolution Steps",
+    "section_summary": "1. Added a strict 1 hour TTL to user history blobs. 2. Scaled Redis cluster memory from 2GB to 4GB. 3. Flushed the cache to clear stale data.",
+    "section_text": "1. Added a strict 1-hour TTL to user history blobs.\n2. Scaled Redis cluster memory from 2GB to 4GB.\n3. Flushed the cache to clear stale data."
   },
   {
     "node_id": "notification-service-queue-backlog-sec0",

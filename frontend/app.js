@@ -1,7 +1,7 @@
 // Dynamically detect API base URL based on environment
 const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:8080' 
-    : 'https://incidentiq-production-b6f3.up.railway.app';
+    : 'https://13-204-107-11.sslip.io';
 // DOM Elements
 const form = document.getElementById('incident-form');
 const input = document.getElementById('query-input');

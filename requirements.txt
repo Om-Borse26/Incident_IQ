@@ -25,7 +25,7 @@ python-docx==1.1.2
 # MCP Diagnostics
 mcp>=1.7
 langchain-mcp-adapters==0.1.0
-# google-cloud-storage>=2.16.0  # Uncomment when migrating to Cloud Run (see gcs_sync.py stub)
+# google-cloud-storage>=2.16.0  # Uncomment for S3 sync when needed
 cachetools==5.3.3
 langchain-chroma==0.2.6
 
@@ -34,5 +34,5 @@ pytest==8.2.2
 pytest-asyncio==0.23.7
 httpx==0.27.0
 
-# Messaging
-redis>=5.0.0
+# Messaging (AWS SQS)
+boto3>=1.34.0

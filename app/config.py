@@ -24,9 +24,9 @@ class Settings(BaseSettings):
 
     # ------------------------------------------------------------------
     # Data directories — platform-agnostic path abstraction.
-    # Railway sets DATA_DIR=/data (persistent volume mount).
-    # Cloud Run sets DATA_DIR=/tmp (ephemeral, restored from GCS).
+    # EC2 sets DATA_DIR=/data (host-mounted EBS directory).
     # Locally, DATA_DIR is unset → defaults to "." → ./chroma_db as before.
+    # LangGraph checkpoints are also stored in DATA_DIR/checkpoints.sqlite.
     # ------------------------------------------------------------------
     DATA_DIR: str = "."
 
@@ -54,10 +54,11 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # ------------------------------------------------------------------
-    # Redis (Messaging / Background Tasks)
+    # AWS (SQS Messaging + ECR)
     # ------------------------------------------------------------------
-    # Example: "redis://localhost:6379/0" or standard Railway REDIS_URL
-    REDIS_URL: str = "redis://localhost:6379/0"
+    AWS_REGION: str = "ap-south-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
 
     # ------------------------------------------------------------------
     # Validation

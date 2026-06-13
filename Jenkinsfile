@@ -2,8 +2,12 @@ pipeline {
     agent any
 
     environment {
-        // Environment variables for testing locally inside Jenkins
-        APP_ENV = 'test'
+        AWS_REGION      = 'ap-south-1'
+        ECR_REPO        = '300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq'
+        EC2_HOST        = '13.204.107.11'
+        EC2_USER        = 'ec2-user'
+        SSLIP_URL       = 'https://13-204-107-11.sslip.io'
+        APP_ENV         = 'test'
     }
 
     stages {
@@ -37,9 +41,9 @@ pipeline {
         stage('Run Gate Tests') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'GROQ_API_KEY', variable: 'GROQ_API_KEY'),
-                    string(credentialsId: 'GEMINI_API_KEY', variable: 'GEMINI_API_KEY'),
-                    string(credentialsId: 'LANGCHAIN_API_KEY', variable: 'LANGCHAIN_API_KEY')
+                    string(credentialsId: 'GROQ_API_KEY',       variable: 'GROQ_API_KEY'),
+                    string(credentialsId: 'GEMINI_API_KEY',     variable: 'GEMINI_API_KEY'),
+                    string(credentialsId: 'LANGCHAIN_API_KEY',  variable: 'LANGCHAIN_API_KEY')
                 ]) {
                     script {
                         if (isUnix()) {
@@ -59,7 +63,6 @@ pipeline {
             }
             post {
                 always {
-                    // This tells Jenkins to parse the XML file and create nice graphs
                     junit 'test-results.xml'
                 }
             }
@@ -68,34 +71,127 @@ pipeline {
         stage('Approval Gate') {
             steps {
                 timeout(time: 1, unit: 'DAYS') {
-                    input message: 'Tests passed! Approve deployment to production?', ok: 'Deploy to Railway'
+                    input message: 'Tests passed! Approve deployment to AWS EC2?', ok: 'Deploy to AWS'
                 }
             }
         }
 
-        stage('Deploy to Production') {
+        stage('Build & Push to ECR') {
             steps {
                 withCredentials([
-                    string(credentialsId: 'RAILWAY_TOKEN', variable: 'RAILWAY_TOKEN')
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY',  variable: 'AWS_SECRET_ACCESS_KEY'),
+                    string(credentialsId: 'AWS_ACCOUNT_ID',         variable: 'AWS_ACCOUNT_ID')
                 ]) {
                     script {
                         if (isUnix()) {
                             sh '''
-                                echo "Installing Railway CLI..."
-                                curl -fsSL cli.new | sh
-                                
-                                echo "Triggering Railway deployment..."
-                                railway up --service Incident_IQ --detach
+                                echo "--- Logging into ECR ---"
+                                aws ecr get-login-password --region ${AWS_REGION} | \
+                                    docker login --username AWS --password-stdin ${ECR_REPO}
+
+                                echo "--- Building Docker image ---"
+                                docker build -t incidentiq:latest .
+
+                                echo "--- Tagging image ---"
+                                docker tag incidentiq:latest ${ECR_REPO}:latest
+                                docker tag incidentiq:latest ${ECR_REPO}:${BUILD_NUMBER}
+
+                                echo "--- Pushing to ECR ---"
+                                docker push ${ECR_REPO}:latest
+                                docker push ${ECR_REPO}:${BUILD_NUMBER}
+
+                                echo "Image pushed: ${ECR_REPO}:${BUILD_NUMBER}"
                             '''
                         } else {
-                            bat '''
-                                echo "Installing Railway CLI..."
-                                call npm i -g @railway/cli
-                                
-                                echo "Triggering Railway deployment..."
-                                call npx @railway/cli up --service Incident_IQ --detach
-                            '''
+                            bat """
+                                echo --- Logging into ECR ---
+                                aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %ECR_REPO%
+
+                                echo --- Building Docker image ---
+                                docker build -t incidentiq:latest .
+
+                                echo --- Tagging image ---
+                                docker tag incidentiq:latest %ECR_REPO%:latest
+                                docker tag incidentiq:latest %ECR_REPO%:%BUILD_NUMBER%
+
+                                echo --- Pushing to ECR ---
+                                docker push %ECR_REPO%:latest
+                                docker push %ECR_REPO%:%BUILD_NUMBER%
+                            """
                         }
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'AWS_ACCESS_KEY_ID',     variable: 'AWS_ACCESS_KEY_ID'),
+                    string(credentialsId: 'AWS_SECRET_ACCESS_KEY',  variable: 'AWS_SECRET_ACCESS_KEY'),
+                    string(credentialsId: 'AWS_ACCOUNT_ID',         variable: 'AWS_ACCOUNT_ID'),
+                    sshUserPrivateKey(
+                        credentialsId:  'EC2_SSH_KEY',
+                        keyFileVariable: 'EC2_KEY',
+                        usernameVariable: 'EC2_USER_VAR'
+                    )
+                ]) {
+                    script {
+                        // Write the .env content inline — delivered via SSH, never stored in the repo
+                        def envContent = """LLM_FALLBACK_ORDER=gemini,groq
+GROQ_API_KEY=${env.GROQ_API_KEY ?: ''}
+GROQ_MODEL=llama-3.3-70b-versatile
+GEMINI_API_KEY=${env.GEMINI_API_KEY ?: ''}
+GEMINI_MODEL=gemini-2.5-flash
+GROQ_VALIDATOR_API_KEY=${env.GROQ_VALIDATOR_API_KEY ?: ''}
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_ENDPOINT=https://apac.api.smith.langchain.com
+LANGCHAIN_API_KEY=${env.LANGCHAIN_API_KEY ?: ''}
+LANGCHAIN_PROJECT=incidentiq
+AWS_REGION=ap-south-1
+AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+DATA_DIR=/data
+"""
+                        writeFile file: 'remote.env', text: envContent
+
+                        sh """
+                            echo "--- Delivering .env to EC2 ---"
+                            scp -i ${EC2_KEY} -o StrictHostKeyChecking=no \
+                                remote.env ${EC2_USER}@${EC2_HOST}:/home/ec2-user/.env
+
+                            echo "--- Pulling new image and restarting container on EC2 ---"
+                            ssh -i ${EC2_KEY} -o StrictHostKeyChecking=no ${EC2_USER}@${EC2_HOST} '
+                                set -e
+
+                                echo "Logging into ECR on EC2..."
+                                aws ecr get-login-password --region ap-south-1 | \
+                                    docker login --username AWS --password-stdin ${ECR_REPO}
+
+                                echo "Pulling latest image..."
+                                docker pull ${ECR_REPO}:latest
+
+                                echo "Stopping old container (if any)..."
+                                docker stop incidentiq 2>/dev/null || true
+                                docker rm   incidentiq 2>/dev/null || true
+
+                                echo "Starting new container..."
+                                docker run -d \
+                                    --name incidentiq \
+                                    --restart unless-stopped \
+                                    --env-file /home/ec2-user/.env \
+                                    -p 8080:8080 \
+                                    -v /home/ec2-user/data:/data \
+                                    ${ECR_REPO}:latest
+
+                                echo "Container started."
+                                docker ps --filter name=incidentiq
+                            '
+                        """
+
+                        // Clean up local env file so secrets are not left on disk
+                        sh 'rm -f remote.env'
                     }
                 }
             }
@@ -103,52 +199,39 @@ pipeline {
 
         stage('Post-Deploy Verification') {
             steps {
-                script {
-                    if (isUnix()) {
-                        sh '''
-                            echo "Waiting 30 seconds for Railway container to build and start..."
+                withCredentials([
+                    string(credentialsId: 'GROQ_API_KEY',    variable: 'GROQ_API_KEY'),
+                    string(credentialsId: 'GEMINI_API_KEY',  variable: 'GEMINI_API_KEY'),
+                    string(credentialsId: 'LANGCHAIN_API_KEY', variable: 'LANGCHAIN_API_KEY')
+                ]) {
+                    script {
+                        sh """
+                            echo "Waiting 30 seconds for container to start..."
                             sleep 30
-                            
-                            echo "Running health check against live production..."
-                            curl --fail -s https://incidentiq-production-b6f3.up.railway.app/health || {
-                                echo "HEALTH CHECK FAILED! Production deployment is unreachable or broken."
+
+                            echo "Running health check against ${SSLIP_URL}..."
+                            curl --fail -s ${SSLIP_URL}/health || {
+                                echo "HEALTH CHECK FAILED! EC2 deployment is unreachable or broken."
                                 exit 1
                             }
-                            echo "Health check passed. Deployment verified."
-                        '''
-                    } else {
-                        bat '''
-                            echo "Waiting 30 seconds for Railway container to build and start..."
-                            ping 127.0.0.1 -n 31 > nul
-                            
-                            echo "Running health check against live production..."
-                            curl --fail -s https://incidentiq-production-b6f3.up.railway.app/health || (
-                                echo "HEALTH CHECK FAILED! Production deployment is unreachable or broken."
-                                exit /b 1
-                            )
-                            echo "Health check passed. Deployment verified."
-                        '''
+                            echo "Health check passed. AWS deployment verified."
+                        """
                     }
                 }
             }
         }
     }
-    
+
     // Global Post Actions
     post {
         always {
             echo "Pipeline execution finished."
-            // We could run 'cleanWs()' here to delete the workspace and save disk space
         }
         success {
-            echo "✅ SUCCESS: The pipeline completed flawlessly!"
-            // This is where you would put a Slack webhook or Email notification code
-            // e.g., slackSend(color: 'good', message: "Deployment Successful!")
+            echo "SUCCESS: Pipeline completed. Live at ${SSLIP_URL}"
         }
         failure {
-            echo "❌ FAILURE: The pipeline failed or was aborted."
-            // e.g., slackSend(color: 'danger', message: "Build Broken! Please check Jenkins.")
-            // e.g., emailext(subject: "Build Failed", body: "Please check Jenkins", to: "your-email@example.com")
+            echo "FAILURE: The pipeline failed or was aborted."
         }
     }
 }

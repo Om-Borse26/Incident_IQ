@@ -1,10 +1,15 @@
 """
 services/messaging/ingestion_worker.py
 
-Standalone subscriber process. Runs SEPARATELY from FastAPI.
+Standalone subscriber process. Runs SEPARATELY from FastAPI (spawned as a
+subprocess in the lifespan event of main.py so it shares the persistent volume).
 
-In production this runs as a separate Railway service or Cloud Run job.
-Listens to the Redis queue for asynchronous ingestion tasks.
+Listens to the AWS SQS queue for asynchronous ingestion tasks.
+
+SQS ack/nack semantics:
+  - ACK: delete_message() called after successful processing.
+  - NACK: do NOT delete — SQS automatically redelivers after VisibilityTimeout (300s).
+  - After 5 failures: message moves to Dead-Letter Queue (DLQ).
 
 Run locally:
     python -m services.messaging.ingestion_worker
@@ -14,12 +19,13 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 
-import redis
+import boto3
+from botocore.exceptions import ClientError
 
 from app.config import settings
-from services.messaging.pubsub_client import QUEUE_NAME
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,27 +33,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger("worker")
 
+QUEUE_NAME = "incident-ingested-queue"
+DLQ_NAME = "incident-ingested-dlq"
+
 
 class IngestionWorker:
     """
-    Subscribes to the incident-ingested Redis queue and performs
+    Subscribes to the incident-ingested SQS queue and performs
     full ChromaDB ingestion + tree index rebuild for each new document.
+
+    Uses SQS long-polling (WaitTimeSeconds=20) for efficient, low-latency
+    message consumption without constant polling overhead.
     """
 
     def __init__(self):
-        self._redis_client = None
+        self._sqs = None
+        self._queue_url = None
+        self._dlq_url = None
         try:
-            # Added health_check_interval=30 to prevent "Timeout reading from socket"
-            # on idle connections in Railway.
-            self._redis_client = redis.from_url(
-                settings.REDIS_URL, 
-                decode_responses=True,
-                health_check_interval=30
+            self._sqs = boto3.client(
+                "sqs",
+                region_name=settings.AWS_REGION,
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             )
-            self._redis_client.ping()
-            logger.info(f"[worker] Connected to Redis at {settings.REDIS_URL}")
+            # Resolve queue URLs
+            self._queue_url = self._sqs.get_queue_url(QueueName=QUEUE_NAME)["QueueUrl"]
+            self._dlq_url = self._sqs.get_queue_url(QueueName=DLQ_NAME)["QueueUrl"]
+            logger.info("[worker] Connected to SQS queue: %s", self._queue_url)
         except Exception as e:
-            logger.critical(f"[worker] Failed to connect to Redis: {e}")
+            logger.critical("[worker] Failed to connect to SQS: %s", e)
             sys.exit(1)
 
     # ------------------------------------------------------------------
@@ -56,32 +71,63 @@ class IngestionWorker:
 
     def start(self) -> None:
         """
-        Pull messages from the Redis list and process them.
+        Poll messages from the SQS queue and process them.
         Blocks forever (designed for long-running service deployment).
+
+        Also starts a background thread to monitor the DLQ.
         """
-        logger.info(f"[worker] Listening on Redis queue: {QUEUE_NAME}")
+        logger.info("[worker] Listening on SQS queue: %s", QUEUE_NAME)
+
+        # Start DLQ watcher in a background daemon thread
+        dlq_thread = threading.Thread(target=self._watch_dlq, daemon=True)
+        dlq_thread.start()
 
         while True:
             try:
-                # brpop blocks until a message is available (timeout 0 means block forever)
-                # It returns a tuple: (queue_name, message_data)
-                result = self._redis_client.brpop(QUEUE_NAME, timeout=0)
-                if result:
-                    _, message_data = result
-                    try:
-                        data = json.loads(message_data)
-                        filename = data.get("filename", "unknown")
-                        logger.info("[worker] Received message for '%s'", filename)
+                # Long-polling: blocks for up to 20s waiting for a message.
+                # This is the SQS equivalent of Redis brpop.
+                response = self._sqs.receive_message(
+                    QueueUrl=self._queue_url,
+                    MaxNumberOfMessages=1,
+                    WaitTimeSeconds=20,  # Long-polling to reduce API calls
+                    VisibilityTimeout=300,  # Hide message for 5 min while processing
+                )
+                messages = response.get("Messages", [])
 
-                        self._process_ingestion(data)
-                        logger.info("[worker] Ingested successfully: %s", filename)
+                if not messages:
+                    # No message available — loop back and long-poll again
+                    continue
 
-                    except Exception as exc:
-                        logger.error(
-                            "[worker] Ingestion failed for data '%s': %s",
-                            message_data,
-                            exc,
-                        )
+                message = messages[0]
+                receipt_handle = message["ReceiptHandle"]
+                message_body = message["Body"]
+
+                try:
+                    data = json.loads(message_body)
+                    filename = data.get("filename", "unknown")
+                    logger.info("[worker] Received SQS message for '%s'", filename)
+
+                    self._process_ingestion(data)
+                    logger.info("[worker] Ingested successfully: %s", filename)
+
+                    # --- ACK: Delete the message from SQS ---
+                    self._sqs.delete_message(
+                        QueueUrl=self._queue_url,
+                        ReceiptHandle=receipt_handle,
+                    )
+                    logger.info("[worker] ACK: Deleted message from SQS for '%s'", filename)
+
+                except Exception as exc:
+                    # --- NACK: Do NOT delete the message ---
+                    # SQS will redeliver it after VisibilityTimeout expires (300s).
+                    # After 5 failures, it moves to the DLQ automatically.
+                    logger.error(
+                        "[worker] NACK: Ingestion failed for '%s': %s. "
+                        "Message will be redelivered by SQS after 300s.",
+                        message_body[:200],
+                        exc,
+                    )
+
             except KeyboardInterrupt:
                 logger.info("[worker] Gracefully shutting down.")
                 break
@@ -90,12 +136,48 @@ class IngestionWorker:
                 time.sleep(5)
 
     # ------------------------------------------------------------------
+    # DLQ Watcher
+    # ------------------------------------------------------------------
+
+    def _watch_dlq(self) -> None:
+        """
+        Background thread: polls the Dead-Letter Queue every 60s.
+        Logs at CRITICAL level if any messages are found — these are
+        messages that have failed 5 times and need manual investigation.
+        """
+        logger.info("[worker] DLQ watcher started for: %s", DLQ_NAME)
+        while True:
+            try:
+                time.sleep(60)
+                response = self._sqs.receive_message(
+                    QueueUrl=self._dlq_url,
+                    MaxNumberOfMessages=10,
+                    WaitTimeSeconds=1,
+                )
+                messages = response.get("Messages", [])
+                if messages:
+                    logger.critical(
+                        "[worker] DEAD-LETTER QUEUE ALERT: %d messages in DLQ '%s'. "
+                        "These messages failed 5+ times and require manual investigation!",
+                        len(messages),
+                        DLQ_NAME,
+                    )
+                    for msg in messages:
+                        logger.critical(
+                            "[worker] DLQ message body: %s",
+                            msg.get("Body", "")[:500],
+                        )
+            except Exception as e:
+                logger.error("[worker] DLQ watcher error: %s", e)
+
+    # ------------------------------------------------------------------
     # Core ingestion work
     # ------------------------------------------------------------------
 
     def _process_ingestion(self, data: dict) -> None:
         """
         Performs the full ingestion pipeline for a new incident document.
+        Raises on failure so the caller can NACK the message.
         """
         filename = data.get("filename", "unknown")
         file_path = data.get("file_path", "")
@@ -132,7 +214,7 @@ class IngestionWorker:
         except Exception as exc:
             logger.warning("[worker] Could not clear query cache (non-fatal): %s", exc)
 
-        logger.info("[worker] ✅ Full ingestion complete for '%s'", filename)
+        logger.info("[worker] Full ingestion complete for '%s'", filename)
 
 
 if __name__ == "__main__":
