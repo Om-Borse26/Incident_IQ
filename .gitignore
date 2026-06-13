@@ -31,3 +31,7 @@ build/
 # Generated / runtime data
 chroma_db/
 tree_index/
+
+# Sensitive / Scratch
+*.pem
+scratch/
