@@ -184,7 +184,7 @@ DATA_DIR=/data
                                 scp -i "C:\\ProgramData\\Jenkins\\.jenkins\\incidentiq-key.pem" -o StrictHostKeyChecking=no remote.env ubuntu@13.204.107.11:/home/ubuntu/.env
 
                                 echo --- Deploying container on EC2 ---
-                                ssh -i "C:\\ProgramData\\Jenkins\\.jenkins\\incidentiq-key.pem" -o StrictHostKeyChecking=no ubuntu@13.204.107.11 "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq && docker pull 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest && (docker stop incidentiq 2>/dev/null || true) && (docker rm incidentiq 2>/dev/null || true) && docker run -d --name incidentiq --restart unless-stopped --env-file /home/ubuntu/.env -p 8080:8080 -v /home/ubuntu/data:/data 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest && docker ps --filter name=incidentiq"
+                                ssh -i "C:\\ProgramData\\Jenkins\\.jenkins\\incidentiq-key.pem" -o StrictHostKeyChecking=no ubuntu@13.204.107.11 "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq && docker pull 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest && (docker stop incidentiq 2>/dev/null || true) && (docker rm incidentiq 2>/dev/null || true) && docker run -d --name incidentiq --restart unless-stopped --env-file /home/ubuntu/.env -p 8080:8080 -v /home/ubuntu/data:/data 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest && (docker rm -f caddy 2>/dev/null || true) && docker run -d --name caddy --restart unless-stopped -p 80:80 -p 443:443 -v caddy_data:/data -v caddy_config:/config caddy caddy reverse-proxy --from 13-204-107-11.sslip.io --to 172.17.0.1:8080"
 
                                 echo --- Cleaning up ---
                                 del remote.env
@@ -211,8 +211,8 @@ DATA_DIR=/data
                         '''
                     } else {
                         bat '''
-                            echo Waiting 30 seconds for container to start...
-                            ping 127.0.0.1 -n 31 > nul
+                            echo Waiting 120 seconds for container to start...
+                            ping 127.0.0.1 -n 121 > nul
                             echo Running health check...
                             curl --fail -s https://13-204-107-11.sslip.io/health || (
                                 echo HEALTH CHECK FAILED!
