@@ -32,7 +32,16 @@ def validate_postmortem(document_text: str) -> ValidationResult:
     try:
         # Search the database for the text of the new document to find potentially similar existing ones
         existing_chunks = search_incidents(query=document_text[:1000], k=3)
-        existing_context = "\n\n".join([f"Existing Document ({chunk.source}):\n{chunk.text}" for chunk in existing_chunks])
+        grouped_chunks = {}
+        for chunk in existing_chunks:
+            grouped_chunks.setdefault(chunk.source, []).append(chunk.text)
+        
+        context_parts = []
+        for source, texts in grouped_chunks.items():
+            combined_text = "\n...[next chunk]...\n".join(texts)
+            context_parts.append(f"Existing Document ({source}):\n{combined_text}")
+            
+        existing_context = "\n\n---\n\n".join(context_parts)
     except Exception as e:
         logger.warning(f"[validator] Failed to perform deduplication search: {e}")
         existing_context = "Could not retrieve existing documents."
