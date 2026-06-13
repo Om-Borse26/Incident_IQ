@@ -106,7 +106,8 @@ pipeline {
                         } else {
                             bat """
                                 echo --- Logging into ECR ---
-                                aws ecr get-login-password --region %AWS_REGION% | docker login --username AWS --password-stdin %ECR_REPO%
+                                call venv\\\\Scripts\\\\activate.bat
+                                python -c "import boto3, base64; client = boto3.client('ecr', region_name='%AWS_REGION%'); token = client.get_authorization_token()['authorizationData'][0]['authorizationToken']; print(base64.b64decode(token).decode('utf-8').split(':')[1])" | docker login --username AWS --password-stdin %ECR_REPO%
 
                                 echo --- Building Docker image ---
                                 docker build -t incidentiq:latest .
