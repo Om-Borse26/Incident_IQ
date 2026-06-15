@@ -178,7 +178,9 @@ QUERY_CACHE = TTLCache(maxsize=100, ttl=3600)
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "incidentiq"}
+    """Health check endpoint for ECS and ALB"""
+    from fastapi import HTTPException
+    raise HTTPException(status_code=500, detail="Intentional failure for ECS bad deployment test")
 
 
 @app.post("/ask", response_model=AskResponse)
