@@ -45,12 +45,12 @@ class PubSubClient:
         self._sqs = None
         self._queue_url = None
         try:
-            self._sqs = boto3.client(
-                "sqs",
-                region_name=settings.AWS_REGION,
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            )
+            boto_kwargs = {"region_name": settings.AWS_REGION}
+            if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+                boto_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
+                boto_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+                
+            self._sqs = boto3.client("sqs", **boto_kwargs)
             logger.info("[pubsub] SQS client initialized for region %s", settings.AWS_REGION)
         except Exception as e:
             logger.warning("[pubsub] Failed to initialize SQS client: %s. Messages will not be queued.", e)

@@ -51,12 +51,12 @@ class IngestionWorker:
         self._queue_url = None
         self._dlq_url = None
         try:
-            self._sqs = boto3.client(
-                "sqs",
-                region_name=settings.AWS_REGION,
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            )
+            boto_kwargs = {"region_name": settings.AWS_REGION}
+            if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
+                boto_kwargs["aws_access_key_id"] = settings.AWS_ACCESS_KEY_ID
+                boto_kwargs["aws_secret_access_key"] = settings.AWS_SECRET_ACCESS_KEY
+
+            self._sqs = boto3.client("sqs", **boto_kwargs)
             # Resolve queue URLs
             self._queue_url = self._sqs.get_queue_url(QueueName=QUEUE_NAME)["QueueUrl"]
             self._dlq_url = self._sqs.get_queue_url(QueueName=DLQ_NAME)["QueueUrl"]

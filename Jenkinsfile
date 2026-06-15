@@ -137,57 +137,26 @@ pipeline {
                     string(credentialsId: 'AWS_ACCOUNT_ID',         variable: 'AWS_ACCOUNT_ID')
                 ]) {
                     script {
-                        // Write .env file with all secrets
-                        writeFile file: 'remote.env', text: """LLM_FALLBACK_ORDER=gemini,groq
-GROQ_API_KEY=${env.GROQ_API_KEY ?: ''}
-GROQ_MODEL=llama-3.3-70b-versatile
-GEMINI_API_KEY=${env.GEMINI_API_KEY ?: ''}
-GEMINI_MODEL=gemini-2.5-flash
-GROQ_VALIDATOR_API_KEY=${env.GROQ_VALIDATOR_API_KEY ?: ''}
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_ENDPOINT=https://apac.api.smith.langchain.com
-LANGCHAIN_API_KEY=${env.LANGCHAIN_API_KEY ?: ''}
-LANGCHAIN_PROJECT=incidentiq
-AWS_REGION=ap-south-1
-AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-DATA_DIR=/data
-"""
-
                         if (isUnix()) {
                             sh '''
-                                PEM_PATH="$HOME/.ssh/incidentiq-key.pem"
-                                scp -i "$PEM_PATH" -o StrictHostKeyChecking=no \
-                                    remote.env ubuntu@13.204.107.11:/home/ubuntu/.env
-
-                                ssh -i "$PEM_PATH" -o StrictHostKeyChecking=no ubuntu@13.204.107.11 '
-                                    set -e
-                                    aws ecr get-login-password --region ap-south-1 | \
-                                        docker login --username AWS --password-stdin 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq
-                                    docker pull 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest
-                                    docker stop incidentiq 2>/dev/null || true
-                                    docker rm   incidentiq 2>/dev/null || true
-                                    docker run -d --name incidentiq \
-                                        --restart unless-stopped \
-                                        --env-file /home/ubuntu/.env \
-                                        -p 8080:8080 \
-                                        -v /home/ubuntu/data:/data \
-                                        300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest
-                                    docker ps --filter name=incidentiq
-                                '
-                                rm -f remote.env
+                                aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 300052334150.dkr.ecr.ap-south-1.amazonaws.com
+                                docker pull 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest || true
+                                docker build -t incidentiq:latest .
+                                docker tag incidentiq:latest 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest
+                                docker push 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest
+                                aws ecs update-service --cluster incidentiq-cluster --service incidentiq-service --force-new-deployment --region ap-south-1
                             '''
                         } else {
-                            // Windows: use the fixed PEM path with proper permissions
                             bat '''
-                                echo --- Delivering .env to EC2 ---
-                                scp -i "C:\\ProgramData\\Jenkins\\.jenkins\\incidentiq-key.pem" -o StrictHostKeyChecking=no remote.env ubuntu@13.204.107.11:/home/ubuntu/.env
+                                echo --- Building and pushing image to ECR ---
+                                aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 300052334150.dkr.ecr.ap-south-1.amazonaws.com
+                                docker pull 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest || exit 0
+                                docker build -t incidentiq:latest .
+                                docker tag incidentiq:latest 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest
+                                docker push 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest
 
-                                echo --- Deploying container on EC2 ---
-                                ssh -i "C:\\ProgramData\\Jenkins\\.jenkins\\incidentiq-key.pem" -o StrictHostKeyChecking=no ubuntu@13.204.107.11 "aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq && docker pull 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest && (docker stop incidentiq 2>/dev/null || true) && (docker rm incidentiq 2>/dev/null || true) && docker run -d --name incidentiq --restart unless-stopped --env-file /home/ubuntu/.env -p 8080:8080 -v /home/ubuntu/data:/data 300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest && (docker rm -f caddy 2>/dev/null || true) && docker run -d --name caddy --restart unless-stopped -p 80:80 -p 443:443 -v caddy_data:/data -v caddy_config:/config caddy caddy reverse-proxy --from 13-204-107-11.sslip.io --to 172.17.0.1:8080"
-
-                                echo --- Cleaning up ---
-                                del remote.env
+                                echo --- Deploying via ECS update-service ---
+                                aws ecs update-service --cluster incidentiq-cluster --service incidentiq-service --force-new-deployment --region ap-south-1
                             '''
                         }
                     }

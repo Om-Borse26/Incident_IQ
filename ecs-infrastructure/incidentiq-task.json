@@ -1,0 +1,65 @@
+{
+  "family": "incidentiq",
+  "taskRoleArn": "arn:aws:iam::300052334150:role/incidentiqTaskRole",
+  "executionRoleArn": "arn:aws:iam::300052334150:role/ecsTaskExecutionRole",
+  "networkMode": "host",
+  "requiresCompatibilities": ["EC2"],
+  "cpu": "896",
+  "memory": "768",
+  "containerDefinitions": [
+    {
+      "name": "incidentiq",
+      "image": "300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq:latest",
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "hostPort": 8080
+        }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "incident-data",
+          "containerPath": "/data"
+        }
+      ],
+      "environment": [
+        {"name": "DATA_DIR", "value": "/data"},
+        {"name": "PORT", "value": "8080"},
+        {"name": "AWS_REGION", "value": "ap-south-1"},
+        {"name": "LLM_FALLBACK_ORDER", "value": "gemini,groq"},
+        {"name": "GROQ_MODEL", "value": "llama-3.3-70b-versatile"},
+        {"name": "GEMINI_MODEL", "value": "gemini-2.5-flash"},
+        {"name": "LANGCHAIN_TRACING_V2", "value": "true"},
+        {"name": "LANGCHAIN_ENDPOINT", "value": "https://apac.api.smith.langchain.com"},
+        {"name": "LANGCHAIN_PROJECT", "value": "incidentiq"}
+      ],
+      "secrets": [
+        {"name": "GROQ_API_KEY", "valueFrom": "arn:aws:ssm:ap-south-1:300052334150:parameter/incidentiq/GROQ_API_KEY"},
+        {"name": "GROQ_VALIDATOR_API_KEY", "valueFrom": "arn:aws:ssm:ap-south-1:300052334150:parameter/incidentiq/GROQ_API_KEY"},
+        {"name": "GEMINI_API_KEY", "valueFrom": "arn:aws:ssm:ap-south-1:300052334150:parameter/incidentiq/GEMINI_API_KEY"},
+        {"name": "LANGCHAIN_API_KEY", "valueFrom": "arn:aws:ssm:ap-south-1:300052334150:parameter/incidentiq/LANGCHAIN_API_KEY"}
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/incidentiq",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "incident-data",
+      "host": {"sourcePath": "/home/ubuntu/data"}
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "family": "caddy",
+  "executionRoleArn": "arn:aws:iam::300052334150:role/ecsTaskExecutionRole",
+  "networkMode": "host",
+  "requiresCompatibilities": ["EC2"],
+  "cpu": "128",
+  "memory": "128",
+  "containerDefinitions": [
+    {
+      "name": "caddy",
+      "image": "caddy",
+      "command": [
+        "caddy",
+        "reverse-proxy",
+        "--from",
+        "13-204-107-11.sslip.io",
+        "--to",
+        "127.0.0.1:8080"
+      ],
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "hostPort": 80
+        },
+        {
+          "containerPort": 443,
+          "hostPort": 443
+        }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "caddy-data",
+          "containerPath": "/data"
+        },
+        {
+          "sourceVolume": "caddy-config",
+          "containerPath": "/config"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/incidentiq",
+          "awslogs-region": "ap-south-1",
+          "awslogs-stream-prefix": "caddy"
+        }
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "caddy-data",
+      "host": {"sourcePath": "/home/ubuntu/caddy_data"}
+    },
+    {
+      "name": "caddy-config",
+      "host": {"sourcePath": "/home/ubuntu/caddy_config"}
+    }
+  ]
+}
