@@ -191,7 +191,19 @@ class IngestionWorker:
                 "Check DATA_DIR mounts."
             )
 
-        with open(file_path, "r", encoding="utf-8") as f:
+        # MOVE the file to the incidents directory so the tree builder can find it
+        import shutil
+        from pathlib import Path
+        incidents_dir = Path(os.environ.get("DATA_DIR", ".")) / "incidents"
+        incidents_dir.mkdir(parents=True, exist_ok=True)
+        final_path = incidents_dir / filename
+        
+        # Only move if the file is not already in the incidents directory
+        if Path(file_path).resolve() != final_path.resolve():
+            shutil.move(file_path, str(final_path))
+            logger.info("[worker] Moved file from raw_documents to %s", final_path)
+
+        with open(final_path, "r", encoding="utf-8") as f:
             content = f.read()
 
         logger.info("[worker] Running embedding for '%s'...", filename)
@@ -201,8 +213,8 @@ class IngestionWorker:
 
         logger.info("[worker] Rebuilding tree index...")
         try:
-            from services.retrieval.tree_search import _rebuild_tree_index
-            _rebuild_tree_index()
+            from services.retrieval.tree_index import build_tree_index
+            build_tree_index()
             logger.info("[worker] Tree index rebuilt.")
         except Exception as exc:
             logger.warning("[worker] Tree index rebuild failed (non-fatal): %s", exc)

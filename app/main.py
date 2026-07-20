@@ -509,8 +509,6 @@ async def ingest_postmortem(request: Request, response: Response, file: UploadFi
     logger.info("[ingest] File saved to '%s'. Publishing event...", file_path)
 
     # 4. Publish event to Pub/Sub — async ingestion starts here
-    #    IMPORTANT: wrapped in try/except. A Pub/Sub failure must NEVER
-    #    cause a 5xx. The file is already saved; worst case is delayed search.
     incident_id = str(uuid4())
     try:
         from services.messaging.pubsub_client import pubsub_client
@@ -527,13 +525,16 @@ async def ingest_postmortem(request: Request, response: Response, file: UploadFi
                 "File is saved but ingestion will NOT run automatically.",
                 file.filename,
             )
+            raise HTTPException(status_code=500, detail="File validated and saved, but background ingestion failed to start (SQS error). Check AWS Credentials.")
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error(
-            "[ingest] Pub/Sub publish raised unexpectedly for '%s': %s. "
-            "Continuing — file is saved.",
+            "[ingest] Pub/Sub publish raised unexpectedly for '%s': %s",
             file.filename,
             exc,
         )
+        raise HTTPException(status_code=500, detail=f"File validated and saved, but background ingestion failed to start: {exc}")
 
     return {
         "status": "processing",
