@@ -240,8 +240,13 @@ async def get_thread_history(thread_id: str, user_id: int = Depends(verify_token
         # Convert objects to dicts for JSON serialization
         messages = []
         for msg in chat_history:
-            role = "user" if msg.__class__.__name__ == "HumanMessage" else "assistant"
-            messages.append({"role": role, "content": msg.content})
+            if isinstance(msg, dict):
+                role = msg.get("role", "unknown")
+                content = msg.get("content", "")
+                messages.append({"role": role, "content": content})
+            else:
+                role = "user" if msg.__class__.__name__ == "HumanMessage" else "assistant"
+                messages.append({"role": role, "content": getattr(msg, "content", "")})
             
         return {"messages": messages}
 
