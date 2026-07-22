@@ -480,17 +480,18 @@ async def retrieve_node(state: ConversationalState) -> dict:
 
     # 1. Vector Search
     try:
-        vector_res = await asyncio.to_thread(search_incidents, query_to_search, 4)
+        vector_res = search_incidents(query_to_search, 4)
         v_list = [
             {"title": r.incident_title, "text": r.text[:1500] + ("..." if len(r.text) > 1500 else ""), "source": r.source}
             for r in vector_res
         ]
     except Exception as e:
+        logger.error(f"[retrieve_node] Vector search failed: {e}")
         v_list = [{"error": str(e)}]
 
     # 2. Tree Search
     try:
-        tree_res = await asyncio.to_thread(tree_search, query_to_search)
+        tree_res = tree_search(query_to_search)
         t_list = [
             {
                 "title": r.incident_title,
