@@ -2,8 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies first (for chroma-hnswlib C++ compilation)
-RUN apt-get update && apt-get install -y build-essential gcc && rm -rf /var/lib/apt/lists/*
+# Install system dependencies first (for chroma-hnswlib C++ compilation and ECS health checks)
+RUN apt-get update && apt-get install -y build-essential gcc curl && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies
 COPY requirements.txt .
