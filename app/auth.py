@@ -148,7 +148,7 @@ def delete_thread(thread_id: str, user_id: int = Depends(verify_token)):
     cursor = conn.cursor()
     
     # Check if user owns the thread
-    cursor.execute("SELECT id FROM threads WHERE thread_id = ? AND user_id = ?", (thread_id, user_id))
+    cursor.execute("SELECT thread_id FROM threads WHERE thread_id = ? AND user_id = ?", (thread_id, user_id))
     if not cursor.fetchone():
         conn.close()
         raise HTTPException(status_code=403, detail="Thread not found or access denied")
