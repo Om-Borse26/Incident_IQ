@@ -8,11 +8,25 @@ from fastapi.testclient import TestClient
 os.environ["GROQ_API_KEY"] = "fake-key"
 os.environ["GEMINI_API_KEY"] = "fake-key"
 
+import tempfile
+import shutil
 from app.main import app
+from app.auth import verify_token
+from app.config import settings
 from services.agent.validator import ValidationResult
 from services.retrieval.search import SearchResult
 
+# Override the authentication dependency for tests
+app.dependency_overrides[verify_token] = lambda: 1
+
 client = TestClient(app)
+
+@pytest.fixture(autouse=True)
+def setup_temp_data_dir(monkeypatch):
+    temp_dir = tempfile.mkdtemp()
+    monkeypatch.setattr(settings, "DATA_DIR", temp_dir)
+    yield
+    shutil.rmtree(temp_dir)
 
 # b) /health returns {"status": "ok"} (catches startup/import crashes)
 def test_health_check():
