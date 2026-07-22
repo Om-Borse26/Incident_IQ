@@ -55,7 +55,7 @@ def test_chitchat_routing(mock_search, mock_get_chat_model):
     mock_output.user_mood = "neutral"
     mock_output.suggested_temperature = 0.5
     
-    mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
+    mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=mock_output)
     mock_llm.invoke.return_value.content = "Hello there! How can I help?"
     
     mock_llm.ainvoke = AsyncMock()
@@ -111,7 +111,7 @@ def test_known_incident_query(mock_search, mock_get_chat_model):
     mock_output.user_mood = "neutral"
     mock_output.suggested_temperature = 0.5
     
-    mock_llm.with_structured_output.return_value.invoke.return_value = mock_output
+    mock_llm.with_structured_output.return_value.ainvoke = AsyncMock(return_value=mock_output)
     mock_llm.invoke.return_value.content = "I found the issue, restart the container."
     mock_llm.ainvoke = AsyncMock()
     mock_llm.ainvoke.return_value.content = "I found the issue, restart the container."
