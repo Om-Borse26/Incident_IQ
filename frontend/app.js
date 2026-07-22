@@ -145,13 +145,15 @@ async function loadSidebarHistory() {
         const threads = await res.json();
         
         historyList.innerHTML = '';
-        threads.forEach(t => {
-            const li = document.createElement('li');
-            li.textContent = t.title;
-            if (t.thread_id === currentSessionId) li.classList.add('active');
-            li.addEventListener('click', () => loadThread(t.thread_id));
-            historyList.appendChild(li);
-        });
+        if (Array.isArray(threads)) {
+            threads.forEach(t => {
+                const li = document.createElement('li');
+                li.textContent = t.title;
+                if (t.thread_id === currentSessionId) li.classList.add('active');
+                li.addEventListener('click', () => loadThread(t.thread_id));
+                historyList.appendChild(li);
+            });
+        }
     } catch (e) {
         console.error("Failed to load history", e);
     }
@@ -239,6 +241,9 @@ async function loadThread(threadId) {
 
 // UI Helpers
 function appendUserMessage(text) {
+    const emptyState = document.getElementById('empty-state');
+    if (emptyState) emptyState.remove();
+
     const div = document.createElement('div');
     div.className = 'message user-message';
     div.innerHTML = `
@@ -493,6 +498,9 @@ function renderResult(data, streamedAnswer, ui) {
             a.className = 'source-tag';
             a.textContent = src;
             let filename = src;
+            if (filename.includes('\\')) filename = filename.split('\\').pop();
+            if (filename.includes('/')) filename = filename.split('/').pop();
+            
             const match = src.match(/\(([^)]+\.(?:md|txt|docx|pdf))\)$/i) || src.match(/^([^ ]+\.(?:md|txt|docx|pdf))$/i);
             if (match && match[1]) filename = match[1];
             else if (!src.includes('.')) filename = null;
@@ -510,7 +518,20 @@ function renderResult(data, streamedAnswer, ui) {
             ui.sourcesTags.appendChild(a);
         });
     } else {
-        ui.sourcesTags.innerHTML = '<span class="source-tag">No sources used</span>';
+        const span = document.createElement('span');
+        span.className = 'tag source-tag';
+        span.textContent = 'No sources used';
+        span.style.opacity = '0.5';
+        span.style.cursor = 'default';
+        ui.sourcesTags.appendChild(span);
+    }
+    
+    // Conditionally hide empty sections for chitchat
+    if (data.mode === 'chitchat' || data.mode === 'known' || (!data.reasoning && (!data.suggested_fixes || data.suggested_fixes.length === 0))) {
+        const grid2 = ui.container.querySelector('.grid-2');
+        const sourcesCard = ui.container.querySelector('.sources-card');
+        if (grid2) grid2.style.display = 'none';
+        if (sourcesCard) sourcesCard.style.display = 'none';
     }
 
     if (data.status === 'pending_approval') {

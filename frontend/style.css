@@ -257,6 +257,7 @@ body {
 .input-group {
     position: relative;
     display: flex;
+    align-items: flex-end;
     max-width: 600px;
     margin: 0 auto;
     background: var(--bg-glass);
@@ -276,8 +277,7 @@ body {
 .search-icon {
     position: absolute;
     left: 1rem;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 1.25rem;
     color: var(--text-muted);
 }
 
@@ -290,6 +290,9 @@ body {
     font-size: 1rem;
     font-family: inherit;
     outline: none;
+    resize: none;
+    overflow-y: hidden;
+    max-height: 200px;
 }
 
 #query-input::placeholder {
