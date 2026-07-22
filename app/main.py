@@ -55,20 +55,11 @@ async def lifespan(app: FastAPI):
         pubsub_client.create_topic_and_subscription_if_not_exists()
         logger.info("[startup] SQS queues ready.")
     except Exception as e:
-        logger.warning("[startup] SQS setup failed: %s. Ingestion events will not be published until SQS is available.", e)
-
-    # Start the SQS ingestion worker as a background process in the same container.
-    # Shares the /data volume with the FastAPI process.
-    import subprocess
-    import sys
-    logger.info("[startup] Spawning background SQS ingestion worker...")
-    worker_process = subprocess.Popen([sys.executable, "-m", "services.messaging.ingestion_worker"])
+        logger.warning("[startup] SQS setup failed: %s", e)
 
     yield
 
-    logger.info("Application shutdown... terminating worker.")
-    worker_process.terminate()
-    worker_process.wait()
+    logger.info("Application shutdown...")
 
 app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 
@@ -387,7 +378,7 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                         filename = os.path.basename(generated_path)
                         with open(generated_path, "r", encoding="utf-8") as f:
                             content = f.read()
-                        ingest_single_document(content, filename)
+                        await asyncio.to_thread(ingest_single_document, content, filename)
                         logger.info(f"[analyze] Successfully auto-ingested generated postmortem: {filename}")
                     except Exception as e:
                         logger.error(f"[analyze] Failed to auto-ingest postmortem: {e}")
@@ -515,25 +506,30 @@ async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSea
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+from fastapi import BackgroundTasks
+
+async def ingest_single_document_async(content: str, filename: str):
+    import asyncio
+    from services.retrieval.ingest import ingest_single_document
+    try:
+        await asyncio.to_thread(ingest_single_document, content, filename)
+    except Exception as e:
+        logger.error(f"[ingest_task] Failed to ingest {filename}: {e}")
+
 @app.post("/incident/ingest")
 @limiter.limit("5/minute")
-async def ingest_postmortem(request: Request, response: Response, file: UploadFile = File(...)):
+async def ingest_postmortem(request: Request, response: Response, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """
     Knowledge Ingestion Pipeline — Phase 11: Event-Driven.
 
     The API now returns IMMEDIATELY after:
       1. Validating the document (LLM call — fast)
       2. Saving the raw file to disk
-      3. Publishing a lightweight Pub/Sub message
+      3. Queueing a FastAPI Background Task
 
     The heavy work (embedding, ChromaDB write, tree index rebuild) is done
-    ASYNCHRONOUSLY by the IngestionWorker in a separate process.
+    ASYNCHRONOUSLY by the BackgroundTask within the same Uvicorn process.
     The incident will be searchable in ~30 seconds.
-
-    DESIGN PRINCIPLE: if Pub/Sub publish fails, we LOG it but do NOT fail
-    the request. The file is already saved. The user's upload succeeded.
-    They can manually re-trigger ingestion. Never let a messaging failure
-    break the user-facing API.
     """
     # 1. Read file
     content_bytes = await file.read()
@@ -550,7 +546,7 @@ async def ingest_postmortem(request: Request, response: Response, file: UploadFi
             detail=f"Document Rejected: {validation.reason}"
         )
 
-    # 3. Save raw file to disk so the worker can read it later
+    # 3. Save raw file to disk
     raw_docs_dir = os.path.join(os.environ.get("DATA_DIR", "."), "raw_documents")
     os.makedirs(raw_docs_dir, exist_ok=True)
     file_path = os.path.join(raw_docs_dir, file.filename)
@@ -558,35 +554,11 @@ async def ingest_postmortem(request: Request, response: Response, file: UploadFi
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-    logger.info("[ingest] File saved to '%s'. Publishing event...", file_path)
+    logger.info("[ingest] File saved to '%s'. Queuing background task...", file_path)
 
-    # 4. Publish event to Pub/Sub — async ingestion starts here
+    # 4. Enqueue in FastAPI BackgroundTasks
     incident_id = str(uuid4())
-    try:
-        from services.messaging.pubsub_client import pubsub_client
-        msg_id = pubsub_client.publish_incident_ingested(
-            incident_id=incident_id,
-            filename=file.filename,
-            file_path=file_path,
-        )
-        if msg_id:
-            logger.info("[ingest] Pub/Sub message published (id=%s)", msg_id)
-        else:
-            logger.error(
-                "[ingest] Pub/Sub publish returned None for '%s'. "
-                "File is saved but ingestion will NOT run automatically.",
-                file.filename,
-            )
-            raise HTTPException(status_code=500, detail="File validated and saved, but background ingestion failed to start (SQS error). Check AWS Credentials.")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error(
-            "[ingest] Pub/Sub publish raised unexpectedly for '%s': %s",
-            file.filename,
-            exc,
-        )
-        raise HTTPException(status_code=500, detail=f"File validated and saved, but background ingestion failed to start: {exc}")
+    background_tasks.add_task(ingest_single_document_async, content, file.filename)
 
     return {
         "status": "processing",
@@ -594,7 +566,7 @@ async def ingest_postmortem(request: Request, response: Response, file: UploadFi
         "message": (
             f"File '{file.filename}' validated and saved. "
             "Ingestion is running in the background. "
-            "The incident will be searchable in ~30 seconds."
+            "The incident will be searchable shortly."
         ),
         "validator_reason": validation.reason,
     }
