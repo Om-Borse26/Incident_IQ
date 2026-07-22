@@ -581,6 +581,8 @@ async def generate_answer_node(state: ConversationalState) -> dict:
     # Extract raw documents for strict context
     raw_vector_results = json.dumps(state.get('retrieved_incidents', []), indent=2)
     raw_tree_results = json.dumps(state.get('vectorless_results', []), indent=2)
+    raw_logs = state.get('live_logs', "")
+    safe_logs = raw_logs[-2000:] if raw_logs else "No logs available."
 
     prompt = f"""You are IncidentIQ, an expert SRE diagnostic agent and friendly copilot.
 Generate the final markdown text answer based on the extracted diagnostics and raw historical context.
@@ -592,6 +594,11 @@ USER MOOD: {state.get('user_mood', 'neutral')}
 EXTRACTED MODE: {state.get('mode')}
 SUGGESTED FIXES: {json.dumps(state.get('suggested_fixes', []))}
 REASONING: {state.get('reasoning')}
+
+LIVE DIAGNOSTICS:
+Health: {json.dumps(state.get('service_health', {}), indent=2)}
+Deploys: {json.dumps(state.get('recent_deploys', []), indent=2)}
+Logs: {safe_logs}
 
 RAW HISTORICAL CONTEXT (Strictly ground your answer on these):
 Vector Results: {raw_vector_results}
