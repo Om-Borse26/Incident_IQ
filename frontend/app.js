@@ -148,7 +148,48 @@ async function loadSidebarHistory() {
         if (Array.isArray(threads)) {
             threads.forEach(t => {
                 const li = document.createElement('li');
-                li.textContent = t.title;
+                
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = t.title;
+                titleSpan.style.flex = "1";
+                titleSpan.style.overflow = "hidden";
+                titleSpan.style.textOverflow = "ellipsis";
+                titleSpan.style.whiteSpace = "nowrap";
+                
+                const deleteBtn = document.createElement('span');
+                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.style.cursor = 'pointer';
+                deleteBtn.style.fontSize = '12px';
+                deleteBtn.style.marginLeft = '8px';
+                deleteBtn.style.opacity = '0.6';
+                
+                deleteBtn.addEventListener('mouseover', () => deleteBtn.style.opacity = '1');
+                deleteBtn.addEventListener('mouseout', () => deleteBtn.style.opacity = '0.6');
+                
+                deleteBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation(); // Prevent li click
+                    if (confirm('Are you sure you want to delete this chat thread?')) {
+                        try {
+                            await fetch(`${API_BASE_URL}/auth/history/${t.thread_id}`, {
+                                method: 'DELETE',
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                            if (currentSessionId === t.thread_id) {
+                                document.getElementById('new-incident-btn').click();
+                            }
+                            loadSidebarHistory();
+                        } catch (err) {
+                            console.error('Failed to delete thread', err);
+                        }
+                    }
+                });
+
+                li.appendChild(titleSpan);
+                li.appendChild(deleteBtn);
+                li.style.display = 'flex';
+                li.style.justifyContent = 'space-between';
+                li.style.alignItems = 'center';
+                
                 if (t.thread_id === currentSessionId) li.classList.add('active');
                 li.addEventListener('click', () => loadThread(t.thread_id));
                 historyList.appendChild(li);

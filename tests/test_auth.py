@@ -10,6 +10,10 @@ client = TestClient(app)
 
 @pytest.fixture(autouse=True)
 def setup_teardown_db(monkeypatch):
+    # Store old overrides and clear them for auth tests
+    old_overrides = app.dependency_overrides.copy()
+    app.dependency_overrides.clear()
+    
     # Create a temporary file for the test DB
     fd, temp_db_path = tempfile.mkstemp(suffix=".sqlite")
     os.close(fd)
@@ -47,6 +51,9 @@ def setup_teardown_db(monkeypatch):
     conn.close()
     
     yield
+    
+    # Restore original overrides
+    app.dependency_overrides = old_overrides
     
     # Cleanup temp file
     if os.path.exists(temp_db_path):

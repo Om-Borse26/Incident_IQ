@@ -141,3 +141,35 @@ def get_user_threads(user_id: int):
     threads = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return threads
+
+@router.delete("/history/{thread_id}")
+def delete_thread(thread_id: str, user_id: int = Depends(verify_token)):
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    # Check if user owns the thread
+    cursor.execute("SELECT id FROM threads WHERE thread_id = ? AND user_id = ?", (thread_id, user_id))
+    if not cursor.fetchone():
+        conn.close()
+        raise HTTPException(status_code=403, detail="Thread not found or access denied")
+        
+    cursor.execute("DELETE FROM threads WHERE thread_id = ?", (thread_id,))
+    conn.commit()
+    conn.close()
+    
+    # Cleanup checkpointer if possible
+    try:
+        import os
+        from app.config import settings
+        db_path = os.path.join(settings.DATA_DIR, "checkpoints.sqlite")
+        if os.path.exists(db_path):
+            chk_conn = sqlite3.connect(db_path, check_same_thread=False)
+            chk_cursor = chk_conn.cursor()
+            chk_cursor.execute("DELETE FROM checkpoints WHERE thread_id = ?", (thread_id,))
+            chk_cursor.execute("DELETE FROM writes WHERE thread_id = ?", (thread_id,))
+            chk_conn.commit()
+            chk_conn.close()
+    except Exception as e:
+        print(f"Error cleaning up checkpointer for {thread_id}: {e}")
+        
+    return {"message": "Thread deleted successfully"}
