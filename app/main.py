@@ -171,6 +171,10 @@ class AnalyzeResponse(BaseModel):
 
 from cachetools import TTLCache
 import hashlib
+from app.auth import router as auth_router, verify_token, save_thread, get_user_threads
+from fastapi import Depends
+
+app.include_router(auth_router)
 
 # Cache completed analyses for 1 hour to ensure fast responses for identical queries
 # keyed by the hash of the lowercase query string
@@ -180,6 +184,49 @@ QUERY_CACHE = TTLCache(maxsize=100, ttl=3600)
 async def health_check():
     """Health check endpoint for ECS and ALB"""
     return {"status": "ok", "service": "incidentiq"}
+
+@app.get("/incident/history")
+def get_history(user_id: int = Depends(verify_token)):
+    """Fetch all chat threads for the current user."""
+    return get_user_threads(user_id)
+
+@app.get("/incident/history/{thread_id}")
+async def get_thread_history(thread_id: str, user_id: int = Depends(verify_token)):
+    """Fetch the message history for a specific thread."""
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    import os
+    import sqlite3
+    
+    # Ensure thread belongs to user
+    from app.auth import get_db
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM threads WHERE thread_id = ?", (thread_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Thread not found or access denied")
+        
+    db_path = os.path.join(os.environ.get("DATA_DIR", "."), "checkpoints.sqlite")
+    if not os.path.exists(db_path):
+        return {"messages": []}
+        
+    async with AsyncSqliteSaver.from_conn_string(db_path) as checkpointer:
+        config = {"configurable": {"thread_id": thread_id}}
+        state = await checkpointer.aget_tuple(config)
+        if not state or not state.checkpoint:
+            return {"messages": []}
+            
+        channel_values = state.checkpoint.get("channel_values", {})
+        chat_history = channel_values.get("chat_history", [])
+        
+        # Convert objects to dicts for JSON serialization
+        messages = []
+        for msg in chat_history:
+            role = "user" if msg.__class__.__name__ == "HumanMessage" else "assistant"
+            messages.append({"role": role, "content": msg.content})
+            
+        return {"messages": messages}
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -199,7 +246,7 @@ async def ask(request: Request, response: Response, body: AskRequest) -> AskResp
 
 @app.post("/incident/analyze", response_model=AnalyzeResponse)
 @limiter.limit("10/minute")
-async def incident_analyze(request: Request, response: Response, body: AnalyzeRequest) -> AnalyzeResponse:
+async def incident_analyze(request: Request, response: Response, body: AnalyzeRequest, user_id: int = Depends(verify_token)) -> AnalyzeResponse:
     """
     Agentic endpoint (Phase 12) — Conversational RAG with multi-turn memory.
 
@@ -221,6 +268,11 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
     import uuid
 
     session_id = body.session_id or str(uuid.uuid4())
+    
+    # Save the thread context to the user's history
+    title = body.query[:30] + "..." if len(body.query) > 30 else body.query
+    save_thread(user_id, session_id, title)
+    
     config = {
         "configurable": {"thread_id": session_id},
         "run_name": "conversational_analysis",
