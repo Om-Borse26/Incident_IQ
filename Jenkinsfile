@@ -169,25 +169,33 @@ pipeline {
                 script {
                     if (isUnix()) {
                         sh '''
-                            echo "Waiting 30 seconds for container to start..."
-                            sleep 30
-                            echo "Running health check..."
-                            curl --fail -s https://13-204-107-11.sslip.io/health || {
-                                echo "HEALTH CHECK FAILED!"
-                                exit 1
-                            }
-                            echo "Health check passed."
+                            echo "Waiting for container to start (polling for up to 5 minutes)..."
+                            for i in $(seq 1 30); do
+                                if curl --fail -s https://13-204-107-11.sslip.io/health; then
+                                    echo "\\nHealth check passed."
+                                    exit 0
+                                fi
+                                echo "Still waiting... ($i/30)"
+                                sleep 10
+                            done
+                            echo "HEALTH CHECK FAILED!"
+                            exit 1
                         '''
                     } else {
                         bat '''
-                            echo Waiting 120 seconds for container to start...
-                            ping 127.0.0.1 -n 121 > nul
-                            echo Running health check...
-                            curl --fail -s https://13-204-107-11.sslip.io/health || (
-                                echo HEALTH CHECK FAILED!
-                                exit /b 1
+                            echo Waiting for container to start (polling for up to 5 minutes)...
+                            setlocal enabledelayedexpansion
+                            for /L %%i in (1,1,30) do (
+                                curl --fail -s https://13-204-107-11.sslip.io/health > nul 2>&1
+                                if !errorlevel! equ 0 (
+                                    echo Health check passed.
+                                    exit /b 0
+                                )
+                                echo Still waiting... (%%i/30)
+                                ping 127.0.0.1 -n 11 > nul
                             )
-                            echo Health check passed.
+                            echo HEALTH CHECK FAILED!
+                            exit /b 1
                         '''
                     }
                 }
