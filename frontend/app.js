@@ -1,7 +1,7 @@
 // Dynamically detect API base URL based on environment
 const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:8080' 
-    : 'https://13-204-107-11.sslip.io';
+    : 'https://52-66-194-252.sslip.io';
 
 // Configure Marked to use Highlight.js
 if (typeof marked !== 'undefined' && typeof hljs !== 'undefined') {
@@ -650,9 +650,151 @@ async function resumeGraph(action, ui) {
 const openUploadBtn = document.getElementById('open-upload-btn');
 const closeUploadBtn = document.getElementById('close-upload-btn');
 const uploadModal = document.getElementById('upload-modal');
+const uploadStatus = document.getElementById('upload-status');
 
-if (openUploadBtn) openUploadBtn.addEventListener('click', () => uploadModal.classList.remove('hidden'));
+if (openUploadBtn) openUploadBtn.addEventListener('click', () => {
+    uploadModal.classList.remove('hidden');
+    if (uploadStatus) uploadStatus.classList.add('hidden');
+});
 if (closeUploadBtn) closeUploadBtn.addEventListener('click', () => uploadModal.classList.add('hidden'));
+
+// Drag and Drop File Input
+const fileDropZone = document.getElementById('file-drop-zone');
+const uploadFileInput = document.getElementById('upload-file');
+const selectedFileName = document.getElementById('selected-file-name');
+
+if (fileDropZone && uploadFileInput) {
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        fileDropZone.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        fileDropZone.addEventListener(eventName, () => fileDropZone.classList.add('drag-over'), false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        fileDropZone.addEventListener(eventName, () => fileDropZone.classList.remove('drag-over'), false);
+    });
+
+    fileDropZone.addEventListener('drop', (e) => {
+        let dt = e.dataTransfer;
+        let files = dt.files;
+        if (files.length) {
+            uploadFileInput.files = files;
+            updateFileName();
+        }
+    });
+
+    uploadFileInput.addEventListener('change', updateFileName);
+
+    function updateFileName() {
+        if (uploadFileInput.files.length > 0) {
+            selectedFileName.textContent = `Selected: ${uploadFileInput.files[0].name}`;
+            selectedFileName.classList.remove('hidden');
+        } else {
+            selectedFileName.textContent = '';
+            selectedFileName.classList.add('hidden');
+        }
+    }
+}
+
+// Handle Form Submissions for Upload
+const uploadForm = document.getElementById('upload-form');
+if (uploadForm) {
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!uploadFileInput.files.length) return;
+        
+        const file = uploadFileInput.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const uploadBtn = document.getElementById('upload-btn');
+        const originalText = uploadBtn.textContent;
+        uploadBtn.textContent = 'Uploading...';
+        uploadBtn.disabled = true;
+        
+        try {
+            const res = await fetch(`${API_BASE_URL}/incident/ingest`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (!res.ok) throw new Error(data.detail || data.message || 'Upload failed');
+            
+            uploadStatus.textContent = data.message;
+            uploadStatus.style.color = 'var(--success)';
+            uploadStatus.classList.remove('hidden');
+            uploadForm.reset();
+            if (selectedFileName) selectedFileName.classList.add('hidden');
+            
+        } catch (err) {
+            uploadStatus.textContent = err.message;
+            uploadStatus.style.color = 'var(--red)';
+            uploadStatus.classList.remove('hidden');
+        } finally {
+            uploadBtn.textContent = originalText;
+            uploadBtn.disabled = false;
+        }
+    });
+}
+
+// Handle Manual Form
+const manualForm = document.getElementById('manual-form');
+if (manualForm) {
+    manualForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const title = document.getElementById('manual-title').value;
+        const service = document.getElementById('manual-service').value;
+        const symptoms = document.getElementById('manual-symptoms').value;
+        const fix = document.getElementById('manual-fix').value;
+        
+        const content = `# ${title}\n\n**Service:** ${service}\n\n## Symptoms\n${symptoms}\n\n## Resolution\n${fix}`;
+        
+        // Convert string to file
+        const file = new File([content], `${title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.md`, { type: 'text/markdown' });
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        const manualBtn = document.getElementById('manual-btn');
+        const originalText = manualBtn.textContent;
+        manualBtn.textContent = 'Uploading...';
+        manualBtn.disabled = true;
+        
+        try {
+            const res = await fetch(`${API_BASE_URL}/incident/ingest`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (!res.ok) throw new Error(data.detail || data.message || 'Upload failed');
+            
+            uploadStatus.textContent = data.message;
+            uploadStatus.style.color = 'var(--success)';
+            uploadStatus.classList.remove('hidden');
+            manualForm.reset();
+            
+        } catch (err) {
+            uploadStatus.textContent = err.message;
+            uploadStatus.style.color = 'var(--red)';
+            uploadStatus.classList.remove('hidden');
+        } finally {
+            manualBtn.textContent = originalText;
+            manualBtn.disabled = false;
+        }
+    });
+}
 
 // Initialize on Load
 checkAuth();

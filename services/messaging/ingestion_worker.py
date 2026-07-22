@@ -1,8 +1,8 @@
 """
 services/messaging/ingestion_worker.py
 
-Standalone subscriber process. Runs SEPARATELY from FastAPI (spawned as a
-subprocess in the lifespan event of main.py so it shares the persistent volume).
+Background subscriber — spawned as a daemon thread inside FastAPI's lifespan
+so it shares the same persistent volume as the web server.
 
 Listens to the AWS SQS queue for asynchronous ingestion tasks.
 
@@ -11,7 +11,7 @@ SQS ack/nack semantics:
   - NACK: do NOT delete — SQS automatically redelivers after VisibilityTimeout (300s).
   - After 5 failures: message moves to Dead-Letter Queue (DLQ).
 
-Run locally:
+Run standalone (for local dev):
     python -m services.messaging.ingestion_worker
 """
 
@@ -44,12 +44,16 @@ class IngestionWorker:
 
     Uses SQS long-polling (WaitTimeSeconds=20) for efficient, low-latency
     message consumption without constant polling overhead.
+    
+    Designed to run as a daemon thread inside FastAPI — it will exit cleanly
+    when the stop_event is set during application shutdown.
     """
 
     def __init__(self):
         self._sqs = None
         self._queue_url = None
         self._dlq_url = None
+        self._ready = False
         try:
             boto_kwargs = {"region_name": settings.AWS_REGION}
             if settings.AWS_ACCESS_KEY_ID and settings.AWS_SECRET_ACCESS_KEY:
@@ -60,43 +64,60 @@ class IngestionWorker:
             # Resolve queue URLs
             self._queue_url = self._sqs.get_queue_url(QueueName=QUEUE_NAME)["QueueUrl"]
             self._dlq_url = self._sqs.get_queue_url(QueueName=DLQ_NAME)["QueueUrl"]
+            self._ready = True
             logger.info("[worker] Connected to SQS queue: %s", self._queue_url)
         except Exception as e:
-            logger.critical("[worker] Failed to connect to SQS: %s", e)
-            sys.exit(1)
+            # Graceful degradation: log a warning but do NOT crash the app.
+            # The FastAPI BackgroundTasks fallback will handle ingestion instead.
+            logger.warning(
+                "[worker] Could not connect to SQS: %s. "
+                "Worker disabled — FastAPI BackgroundTasks will handle ingestion.",
+                e,
+            )
+
+    @property
+    def is_ready(self) -> bool:
+        """True if the worker successfully connected to SQS and is ready to process."""
+        return self._ready
 
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
 
-    def start(self) -> None:
+    def start(self, stop_event: threading.Event | None = None) -> None:
         """
         Poll messages from the SQS queue and process them.
-        Blocks forever (designed for long-running service deployment).
+        Blocks until stop_event is set (or forever if stop_event is None).
 
-        Also starts a background thread to monitor the DLQ.
+        Args:
+            stop_event: A threading.Event that, when set, causes the worker
+                        to exit gracefully. Pass None to run forever (standalone mode).
         """
-        logger.info("[worker] Listening on SQS queue: %s", QUEUE_NAME)
+        if not self._ready:
+            logger.warning("[worker] SQS not available — worker loop will not start.")
+            return
+
+        logger.info("[worker] Starting. Listening on SQS queue: %s", QUEUE_NAME)
 
         # Start DLQ watcher in a background daemon thread
-        dlq_thread = threading.Thread(target=self._watch_dlq, daemon=True)
+        dlq_thread = threading.Thread(
+            target=self._watch_dlq, args=(stop_event,), daemon=True, name="dlq-watcher"
+        )
         dlq_thread.start()
 
-        while True:
+        while stop_event is None or not stop_event.is_set():
             try:
                 # Long-polling: blocks for up to 20s waiting for a message.
-                # This is the SQS equivalent of Redis brpop.
                 response = self._sqs.receive_message(
                     QueueUrl=self._queue_url,
                     MaxNumberOfMessages=1,
-                    WaitTimeSeconds=20,  # Long-polling to reduce API calls
+                    WaitTimeSeconds=20,  # Long-polling reduces API calls dramatically
                     VisibilityTimeout=300,  # Hide message for 5 min while processing
                 )
                 messages = response.get("Messages", [])
 
                 if not messages:
-                    # No message available — loop back and long-poll again
-                    continue
+                    continue  # No message — long-poll again
 
                 message = messages[0]
                 receipt_handle = message["ReceiptHandle"]
@@ -119,36 +140,42 @@ class IngestionWorker:
 
                 except Exception as exc:
                     # --- NACK: Do NOT delete the message ---
-                    # SQS will redeliver it after VisibilityTimeout expires (300s).
-                    # After 5 failures, it moves to the DLQ automatically.
+                    # SQS redelivers after VisibilityTimeout. After 5 failures → DLQ.
                     logger.error(
                         "[worker] NACK: Ingestion failed for '%s': %s. "
-                        "Message will be redelivered by SQS after 300s.",
+                        "SQS will redeliver after 300s.",
                         message_body[:200],
                         exc,
                     )
 
             except KeyboardInterrupt:
-                logger.info("[worker] Gracefully shutting down.")
+                logger.info("[worker] KeyboardInterrupt — shutting down.")
                 break
             except Exception as exc:
-                logger.error("[worker] Unrecoverable worker error: %s. Retrying in 5s...", exc)
+                logger.error("[worker] Unrecoverable error: %s. Retrying in 5s...", exc)
                 time.sleep(5)
+
+        logger.info("[worker] Stop event received — exiting cleanly.")
 
     # ------------------------------------------------------------------
     # DLQ Watcher
     # ------------------------------------------------------------------
 
-    def _watch_dlq(self) -> None:
+    def _watch_dlq(self, stop_event: threading.Event | None = None) -> None:
         """
         Background thread: polls the Dead-Letter Queue every 60s.
         Logs at CRITICAL level if any messages are found — these are
         messages that have failed 5 times and need manual investigation.
         """
         logger.info("[worker] DLQ watcher started for: %s", DLQ_NAME)
-        while True:
+        while stop_event is None or not stop_event.is_set():
             try:
-                time.sleep(60)
+                # Use a short sleep loop so we can respond to stop_event quickly
+                for _ in range(60):
+                    if stop_event and stop_event.is_set():
+                        return
+                    time.sleep(1)
+
                 response = self._sqs.receive_message(
                     QueueUrl=self._dlq_url,
                     MaxNumberOfMessages=10,
@@ -163,10 +190,7 @@ class IngestionWorker:
                         DLQ_NAME,
                     )
                     for msg in messages:
-                        logger.critical(
-                            "[worker] DLQ message body: %s",
-                            msg.get("Body", "")[:500],
-                        )
+                        logger.critical("[worker] DLQ message body: %s", msg.get("Body", "")[:500])
             except Exception as e:
                 logger.error("[worker] DLQ watcher error: %s", e)
 
@@ -188,7 +212,7 @@ class IngestionWorker:
             raise FileNotFoundError(
                 f"File not found at path '{file_path}'. "
                 "The API saved it, but the worker cannot read it. "
-                "Check DATA_DIR mounts."
+                "Check DATA_DIR mounts are consistent between the API and worker."
             )
 
         # MOVE the file to the incidents directory so the tree builder can find it

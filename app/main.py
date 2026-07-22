@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import threading
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -15,6 +16,9 @@ from services.agent.incident_graph import incident_graph
 from services.agent.validator import validate_postmortem
 
 logger = logging.getLogger(__name__)
+
+# Shared stop event used to signal the SQS worker daemon thread to exit cleanly
+_worker_stop_event = threading.Event()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -49,17 +53,39 @@ async def lifespan(app: FastAPI):
     raw_docs_dir = os.path.join(settings.DATA_DIR, "raw_documents")
     os.makedirs(raw_docs_dir, exist_ok=True)
 
-    # Ensure SQS queues exist (idempotent — safe to call every startup)
+    # ----------------------------------------------------------------
+    # SQS Setup: Create queues (idempotent) then start the worker thread
+    # ----------------------------------------------------------------
     try:
         from services.messaging.pubsub_client import pubsub_client
         pubsub_client.create_topic_and_subscription_if_not_exists()
         logger.info("[startup] SQS queues ready.")
+
+        # Start the IngestionWorker as a daemon thread alongside FastAPI.
+        # It exits cleanly when _worker_stop_event is set during shutdown.
+        from services.messaging.ingestion_worker import IngestionWorker
+        _worker_stop_event.clear()
+        worker = IngestionWorker()
+        if worker.is_ready:
+            worker_thread = threading.Thread(
+                target=worker.start,
+                args=(_worker_stop_event,),
+                daemon=True,
+                name="sqs-ingestion-worker",
+            )
+            worker_thread.start()
+            logger.info("[startup] SQS ingestion worker thread started (tid=%s).", worker_thread.ident)
+        else:
+            logger.warning("[startup] SQS worker not ready — using BackgroundTasks fallback for ingestion.")
     except Exception as e:
-        logger.warning("[startup] SQS setup failed: %s", e)
+        logger.warning("[startup] SQS setup failed: %s. Ingestion will use BackgroundTasks fallback.", e)
 
     yield
 
-    logger.info("Application shutdown...")
+    # Graceful shutdown: signal the worker thread to stop
+    logger.info("Application shutdown — signalling SQS worker to stop...")
+    _worker_stop_event.set()
+    logger.info("Application shutdown complete.")
 
 app = FastAPI(title="IncidentIQ", lifespan=lifespan)
 
@@ -520,15 +546,16 @@ async def ingest_single_document_async(content: str, filename: str):
 @limiter.limit("5/minute")
 async def ingest_postmortem(request: Request, response: Response, background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     """
-    Knowledge Ingestion Pipeline — Phase 11: Event-Driven.
+    Knowledge Ingestion Pipeline — Phase 12: SQS Event-Driven with BackgroundTasks fallback.
 
-    The API now returns IMMEDIATELY after:
+    The API returns IMMEDIATELY after:
       1. Validating the document (LLM call — fast)
       2. Saving the raw file to disk
-      3. Queueing a FastAPI Background Task
+      3. Publishing an SQS message → picked up by the IngestionWorker daemon thread
+         (fallback: FastAPI BackgroundTask if SQS is unavailable)
 
-    The heavy work (embedding, ChromaDB write, tree index rebuild) is done
-    ASYNCHRONOUSLY by the BackgroundTask within the same Uvicorn process.
+    The heavy work (embedding, ChromaDB write, tree index rebuild) is decoupled
+    from the HTTP request lifecycle, providing scalable async processing.
     The incident will be searchable in ~30 seconds.
     """
     # 1. Read file
@@ -554,18 +581,33 @@ async def ingest_postmortem(request: Request, response: Response, background_tas
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
 
-    logger.info("[ingest] File saved to '%s'. Queuing background task...", file_path)
-
-    # 4. Enqueue in FastAPI BackgroundTasks
     incident_id = str(uuid4())
-    background_tasks.add_task(ingest_single_document_async, content, file.filename)
+    logger.info("[ingest] File saved to '%s' (incident_id=%s).", file_path, incident_id)
+
+    # 4. Primary path: publish to SQS — the IngestionWorker daemon picks it up
+    from services.messaging.pubsub_client import pubsub_client
+    sqs_msg_id = pubsub_client.publish_incident_ingested(
+        incident_id=incident_id,
+        filename=file.filename,
+        file_path=file_path,
+    )
+
+    if sqs_msg_id:
+        logger.info("[ingest] SQS message published (MessageId=%s). Worker will process asynchronously.", sqs_msg_id)
+        ingestion_method = "sqs"
+    else:
+        # 5. Fallback: SQS unavailable — use FastAPI BackgroundTask instead
+        logger.warning("[ingest] SQS publish failed — falling back to BackgroundTask for '%s'.", file.filename)
+        background_tasks.add_task(ingest_single_document_async, content, file.filename)
+        ingestion_method = "background_task"
 
     return {
         "status": "processing",
         "incident_id": incident_id,
+        "ingestion_method": ingestion_method,
         "message": (
             f"File '{file.filename}' validated and saved. "
-            "Ingestion is running in the background. "
+            "Ingestion is running asynchronously. "
             "The incident will be searchable shortly."
         ),
         "validator_reason": validation.reason,

@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IncidentIQ - AI Ops Copilot</title>
-    <meta name="description" content="AI-powered incident diagnostics and resolution">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <title>IncidentIQ — AI Ops Copilot</title>
+    <meta name="description" content="AI-powered incident diagnostics and resolution for SRE teams">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -133,7 +135,12 @@
             <!-- Loading Indicator -->
             <div class="loading-state hidden" id="loading-spinner">
                 <div class="loader"></div>
-                <p>Analyzing telemetry, logs, and historical data...</p>
+                <p class="status-text" id="loading-status-text">Analyzing telemetry and historical data...</p>
+                <div style="width: 240px; margin-top: 0.5rem;">
+                    <div class="shimmer-line" style="width: 100%"></div>
+                    <div class="shimmer-line"></div>
+                    <div class="shimmer-line"></div>
+                </div>
             </div>
 
             <!-- Input Area -->
@@ -167,8 +174,16 @@
 
             <div id="upload-tab" class="tab-pane active">
                 <form id="upload-form">
-                    <input type="file" id="upload-file" accept=".md,.txt" required style="width: 100%; margin-bottom: 1rem; color: #fff;">
-                    <button type="submit" class="btn btn-primary" id="upload-btn" style="width: 100%;">Upload & Validate</button>
+                    <div class="file-drop-zone" id="file-drop-zone">
+                        <input type="file" id="upload-file" accept=".md,.txt" required>
+                        <div class="file-drop-icon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        </div>
+                        <p class="file-drop-label">Drop your postmortem file here</p>
+                        <p class="file-drop-sub">or click to browse &mdash; .md or .txt accepted</p>
+                        <p class="file-selected-name hidden" id="selected-file-name"></p>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="upload-btn" style="width: 100%;">Upload &amp; Validate</button>
                 </form>
             </div>
 

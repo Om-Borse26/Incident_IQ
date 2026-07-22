@@ -1,0 +1,12 @@
+{
+    "ImageId": "ami-0023f89a947da7030",
+    "InstanceType": "t3.micro",
+    "KeyName": "incidentiq-key",
+    "SecurityGroupIds": [
+        "sg-0b31fee9517c552dd"
+    ],
+    "IamInstanceProfile": {
+        "Name": "ecsInstanceProfile"
+    },
+    "UserData": "IyEvYmluL2Jhc2gKZWNobyBFQ1NfQ0xVU1RFUj1pbmNpZGVudGlxLWNsdXN0ZXIgPj4gL2V0Yy9lY3MvZWNzLmNvbmZpZw=="
+}
