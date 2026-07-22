@@ -6,7 +6,7 @@ pipeline {
         ECR_REPO        = '300052334150.dkr.ecr.ap-south-1.amazonaws.com/incidentiq'
         EC2_HOST        = '52.66.194.252'
         EC2_USER        = 'ubuntu'
-        SSLIP_URL       = 'https://52-66-194-252.sslip.io'
+        SSLIP_URL       = 'https://35-154-73-117.sslip.io'
         APP_ENV         = 'test'
         // Fixed path to SSH key (copied once, permissions set permanently)
         EC2_PEM         = 'C:\\ProgramData\\Jenkins\\.jenkins\\incidentiq-key.pem'
@@ -192,7 +192,7 @@ pipeline {
                             echo Waiting for ECS task to start (up to 5 minutes)...
                             setlocal enabledelayedexpansion
                             for /L %%i in (1,1,30) do (
-                                curl --fail -s https://52-66-194-252.sslip.io/health > nul 2>&1
+                                curl --fail -s https://35-154-73-117.sslip.io/health > nul 2>&1
                                 if !errorlevel! equ 0 (
                                     echo Health check passed. Deployment successful!
                                     exit /b 0

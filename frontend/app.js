@@ -1,7 +1,7 @@
 // Dynamically detect API base URL based on environment
 const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:8080' 
-    : 'https://52-66-194-252.sslip.io';
+    : 'https://35-154-73-117.sslip.io';
 
 // Configure Marked to use Highlight.js
 if (typeof marked !== 'undefined' && typeof hljs !== 'undefined') {
