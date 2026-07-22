@@ -222,7 +222,7 @@ Classify the latest message and, if it's a followup_rag, rewrite it to be
 self-contained by incorporating context from the conversation."""
 
     try:
-        res = extractor.invoke(prompt)
+        res = await extractor.ainvoke(prompt)
         return {
             "is_followup": res.followup_type != "new_query",
             "followup_type": res.followup_type,
@@ -261,7 +261,7 @@ async def classify_node(state: ConversationalState) -> dict:
     query_to_classify = state.get("rewritten_query") or state["query"]
 
     try:
-        res = extractor.invoke(f"Classify the following query:\n\n{query_to_classify}")
+        res = await extractor.ainvoke(f"Classify the following query:\n\n{query_to_classify}")
         cleared_state["query_type"] = res.query_type
         return cleared_state
     except Exception as e:
@@ -385,7 +385,7 @@ async def diagnose_node(state: ConversationalState) -> dict:
     query_to_use = state.get("rewritten_query") or state["query"]
 
     try:
-        extracted = extractor.invoke(f"Extract the service name from: {query_to_use}")
+        extracted = await extractor.ainvoke(f"Extract the service name from: {query_to_use}")
         service_name = extracted.service_name.replace(" ", "-").lower() if extracted.service_name else ""
     except Exception:
         service_name = ""
@@ -478,9 +478,11 @@ async def retrieve_node(state: ConversationalState) -> dict:
     query_to_search = state.get("rewritten_query") or state["query"]
     logger.info("[graph] Searching with query: '%s'", query_to_search)
 
+    import asyncio
+
     # 1. Vector Search
     try:
-        vector_res = search_incidents(query_to_search, 4)
+        vector_res = await asyncio.to_thread(search_incidents, query_to_search, 4)
         v_list = [
             {"title": r.incident_title, "text": r.text[:1500] + ("..." if len(r.text) > 1500 else ""), "source": r.source}
             for r in vector_res
@@ -491,7 +493,7 @@ async def retrieve_node(state: ConversationalState) -> dict:
 
     # 2. Tree Search
     try:
-        tree_res = tree_search(query_to_search)
+        tree_res = await asyncio.to_thread(tree_search, query_to_search)
         t_list = [
             {
                 "title": r.incident_title,
@@ -537,7 +539,7 @@ Determine if this represents a new major incident requiring a postmortem.
 Return only the extracted mode, confidence, reasoning, suggested fixes, sources, and needs_postmortem.
 """
     try:
-        res = extractor.invoke(prompt)
+        res = await extractor.ainvoke(prompt)
 
         # Guarantee accurate sources by pulling directly from state
         actual_sources = []
@@ -600,7 +602,7 @@ Health: {json.dumps(state.get('service_health', {}), indent=2)}
 Deploys: {json.dumps(state.get('recent_deploys', []), indent=2)}
 Logs: {safe_logs}
 
-RAW HISTORICAL CONTEXT (Strictly ground your answer on these):
+RAW HISTORICAL CONTEXT:
 Vector Results: {raw_vector_results}
 Tree Results: {raw_tree_results}
 
@@ -608,19 +610,39 @@ Original User Message: {state['query']}
 
 TONE INSTRUCTIONS:
 - Adapt your conversational tone and style (friendly, formal, joking) to match the USER MOOD.
-- However, your technical facts MUST be strictly grounded in the RAW HISTORICAL CONTEXT above. 
+- Your technical facts MUST be strictly grounded in BOTH the RAW HISTORICAL CONTEXT and LIVE DIAGNOSTICS above. 
+- If the user explicitly asks for logs or live metrics, you MUST print them exactly as they appear in the LIVE DIAGNOSTICS section.
 - Do not invent fixes or fluff the technical analysis. 
-- When explaining root causes or suggesting fixes, pull the exact details, timestamps, or code from the raw context.
+- When explaining root causes or suggesting fixes, pull the exact details, timestamps, or code from the raw context or live logs.
 - Quote directly from the source documents when providing fixes.
 - Use rich markdown formatting and emojis to format your answer nicely.
-- If mode is 'unknown', say so politely. Do not speculate.
+- If mode is 'unknown', say so politely, but you MUST still provide the LIVE DIAGNOSTICS and Logs if they are available.
 """
     try:
         res = await llm.ainvoke(prompt)
         answer = res.content
     except Exception as e:
         logger.error(f"[graph] generate_answer_node failed: {e}")
-        answer = "Sorry, I had trouble generating an answer."
+        error_msg = str(e).lower()
+        
+        fallback_msg = "⚠️ **AI Generation Failed** ⚠️\n\n"
+        if "429" in error_msg or "rate limit" in error_msg or "too many requests" in error_msg:
+            fallback_msg += "The system is currently experiencing high traffic and the AI models have hit their **Rate Limits**. "
+        else:
+            fallback_msg += "An unexpected error occurred while communicating with the AI models. "
+            
+        fallback_msg += "However, to ensure you can still diagnose the issue, here are the raw incident records we retrieved from the database:\n\n"
+        
+        retrieved = state.get("retrieved_incidents", [])
+        if retrieved and len(retrieved) > 0 and "title" in retrieved[0]:
+            for i, chunk in enumerate(retrieved, 1):
+                fallback_msg += f"{i}. **{chunk.get('title', 'Unknown')}** (Source: `{chunk.get('source', 'Unknown')}`)\n"
+                text_snippet = chunk.get("text", "")[:300].replace("\n", " ")
+                fallback_msg += f"   > *{text_snippet}...*\n\n"
+        else:
+            fallback_msg += "*No relevant historical context was found.*"
+            
+        answer = fallback_msg
 
     # Append this turn to chat history and truncate
     updated_history = list(state.get("chat_history", []))

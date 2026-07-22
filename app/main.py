@@ -256,7 +256,8 @@ async def get_thread_history(thread_id: str, user_id: int = Depends(verify_token
 async def ask(request: Request, response: Response, body: AskRequest) -> AskResponse:
     """Send a question to the configured LLM and return its answer."""
     try:
-        answer = ask_llm(prompt=body.question)
+        import asyncio
+        answer = await asyncio.to_thread(ask_llm, prompt=body.question)
     except LLMAllProvidersFailed as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except LLMError as exc:
@@ -455,9 +456,10 @@ async def incident_search(body: IncidentSearchRequest) -> IncidentSearchResponse
       AI synthesis. degraded=True signals the client that the answer field is
       a fallback message, not an LLM-generated synthesis.
     """
+    import asyncio
     # ------------------------------------------------------------------ R
     try:
-        chunks = search_incidents(query=body.query, k=body.k)
+        chunks = await asyncio.to_thread(search_incidents, query=body.query, k=body.k)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -468,7 +470,7 @@ async def incident_search(body: IncidentSearchRequest) -> IncidentSearchResponse
 
     # ------------------------------------------------------------------ G  (with graceful degradation)
     try:
-        answer = ask_llm(prompt=body.query, system=system_prompt)
+        answer = await asyncio.to_thread(ask_llm, prompt=body.query, system=system_prompt)
 
         # Build list of unique source titles for UI
         sources = _format_sources(chunks, include_text=False)
@@ -501,9 +503,10 @@ async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSea
     RAG endpoint (Vectorless) — Uses the LLM to structurally route to correct
     sections instead of using vector embeddings.
     """
+    import asyncio
     # ------------------------------------------------------------------ R
     try:
-        nodes = tree_search(query=body.query)
+        nodes = await asyncio.to_thread(tree_search, query=body.query)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Retrieval error: {exc}")
 
@@ -512,7 +515,7 @@ async def incident_search_vectorless(body: IncidentSearchRequest) -> IncidentSea
 
     # ------------------------------------------------------------------ G
     try:
-        answer = ask_llm(prompt=body.query, system=system_prompt)
+        answer = await asyncio.to_thread(ask_llm, prompt=body.query, system=system_prompt)
 
         sources = _format_sources_vectorless(nodes, include_text=False)
         return IncidentSearchResponse(answer=answer, sources=sources, degraded=False)
