@@ -233,6 +233,18 @@ async function loadSidebarHistory() {
     }
 }
 
+function bindSuggestionCards() {
+    document.querySelectorAll('.suggestion-card').forEach(card => {
+        // Remove old listener if any to avoid duplicates
+        const newCard = card.cloneNode(true);
+        card.parentNode.replaceChild(newCard, card);
+        newCard.addEventListener('click', () => {
+            input.value = newCard.getAttribute('data-query');
+            btn.click(); // Auto submit
+        });
+    });
+}
+
 function clearChat() {
     chatMessages.innerHTML = `
         <div class="empty-state-container" id="empty-state">
@@ -253,6 +265,11 @@ function clearChat() {
                     <h4>Search Past Incidents</h4>
                     <p>Query the postmortem database</p>
                 </div>
+                <div class="suggestion-card" data-query="I want to write a .md document to ingest an issue into the knowledge base. Please provide a standard Markdown template. Also, include guidelines reminding users to check for duplicates first and wait about 1 minute after ingestion for the async SQS queue to process before searching.">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    <h4>Document an Issue</h4>
+                    <p>Get a template & ingestion rules</p>
+                </div>
                 <div class="suggestion-card" data-query="What is your architecture and how do you resolve incidents?">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
                     <h4>Learn about IncidentIQ</h4>
@@ -262,14 +279,13 @@ function clearChat() {
         </div>
     `;
 
-    // Bind suggestion cards
-    document.querySelectorAll('.suggestion-card').forEach(card => {
-        card.addEventListener('click', () => {
-            input.value = card.getAttribute('data-query');
-            btn.click(); // Auto submit
-        });
-    });
+    bindSuggestionCards();
 }
+
+// Bind initial cards on page load
+document.addEventListener("DOMContentLoaded", () => {
+    bindSuggestionCards();
+});
 
 newChatBtn.addEventListener('click', () => {
     currentSessionId = crypto.randomUUID();
