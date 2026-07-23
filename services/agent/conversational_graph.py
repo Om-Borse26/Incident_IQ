@@ -603,6 +603,7 @@ async def generate_answer_node(state: ConversationalState) -> dict:
     raw_tree_results = json.dumps(state.get('vectorless_results', []), indent=2)
     raw_logs = state.get('live_logs', "")
     safe_logs = raw_logs[-2000:] if raw_logs else "No logs available."
+    has_diagnostics = state.get("diagnostics_available", False)
 
     prompt = f"""You are IncidentIQ, an expert SRE diagnostic agent and friendly copilot.
 Generate the final markdown text answer based on the extracted diagnostics and raw historical context.
@@ -634,7 +635,8 @@ TONE INSTRUCTIONS:
 - When explaining root causes or suggesting fixes, pull the exact details, timestamps, or code from the raw context or live logs.
 - Quote directly from the source documents when providing fixes.
 - Use rich markdown formatting and emojis to format your answer nicely.
-- If mode is 'unknown', say so politely, but you MUST still provide the LIVE DIAGNOSTICS and Logs if they are available.
+- IMPORTANT: If this is a historical question AND you have no live logs or metrics, DO NOT print the empty "LIVE DIAGNOSTICS" in your response. Only print them if they contain actual data or if the user explicitly asked for current logs.
+- DO NOT generate titles like 'Root Cause Analysis' or 'Suggested Fixes' unless explicitly formatting the text body, because these fields will be displayed in separate UI boxes. Focus on the core explanation.
 """
     try:
         res = await llm.ainvoke(prompt)
@@ -665,13 +667,17 @@ TONE INSTRUCTIONS:
     # Append this turn to chat history and truncate
     updated_history = list(state.get("chat_history", []))
     updated_history.append({"role": "user", "content": state["query"]})
+    
+    # Extract robust sources for history
+    hist_sources = [s.model_dump() if hasattr(s, "model_dump") else s for s in state.get("sources", [])]
+    
     updated_history.append({
         "role": "assistant", 
         "content": answer,
         "mode": state.get("mode", "unknown"),
         "confidence": state.get("confidence", 1.0),
-        "reasoning": state.get("reasoning", ""),
-        "sources": [s.model_dump() if hasattr(s, "model_dump") else s for s in state.get("sources", [])],
+        "reasoning": state.get("reasoning", "No reasoning traces available."),
+        "sources": hist_sources,
         "suggested_fixes": state.get("suggested_fixes", []),
         "status": "completed",
         "needs_postmortem": state.get("needs_postmortem", False),
@@ -681,7 +687,10 @@ TONE INSTRUCTIONS:
 
     return {
         "answer": answer,
-        "chat_history": updated_history
+        "chat_history": updated_history,
+        "reasoning": state.get("reasoning", "No reasoning traces available."),
+        "suggested_fixes": state.get("suggested_fixes", []),
+        "sources": state.get("sources", [])
     }
 
 

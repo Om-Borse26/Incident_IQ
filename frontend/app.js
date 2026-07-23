@@ -182,19 +182,20 @@ async function loadSidebarHistory() {
                 const li = document.createElement('li');
                 
                 const titleSpan = document.createElement('span');
-                titleSpan.textContent = t.title;
-                titleSpan.style.flex = "1";
-                titleSpan.style.minWidth = "0";
+                titleSpan.textContent = t.first_query || "New Incident";
+                titleSpan.style.whiteSpace = "nowrap";
                 titleSpan.style.overflow = "hidden";
                 titleSpan.style.textOverflow = "ellipsis";
-                titleSpan.style.whiteSpace = "nowrap";
+                titleSpan.style.flex = "1";
+                titleSpan.style.minWidth = "0";
+                titleSpan.style.marginRight = "8px";
                 
                 const deleteBtn = document.createElement('span');
                 deleteBtn.innerHTML = '🗑️';
                 deleteBtn.style.cursor = 'pointer';
                 deleteBtn.style.fontSize = '12px';
-                deleteBtn.style.marginLeft = '8px';
                 deleteBtn.style.opacity = '0.6';
+                deleteBtn.style.flexShrink = '0';
                 
                 deleteBtn.addEventListener('mouseover', () => deleteBtn.style.opacity = '1');
                 deleteBtn.addEventListener('mouseout', () => deleteBtn.style.opacity = '0.6');
