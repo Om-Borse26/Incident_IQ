@@ -47,6 +47,38 @@ const historyList = document.getElementById('history-list');
 const newChatBtn = document.getElementById('new-chat-btn');
 const loadingState = document.getElementById('loading-spinner');
 
+// ===========================================================
+// RESIZABLE SIDEBAR
+// ===========================================================
+const sidebar = document.getElementById('sidebar');
+const resizeHandle = document.getElementById('sidebar-resize-handle');
+let isResizing = false;
+
+resizeHandle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    resizeHandle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const newWidth = e.clientX;
+    if (newWidth >= 180 && newWidth <= 480) {
+        sidebar.style.width = newWidth + 'px';
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    if (isResizing) {
+        isResizing = false;
+        resizeHandle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    }
+});
+
 // Auth Setup
 function checkAuth() {
     if (!token) {
@@ -366,6 +398,11 @@ const loadingStages = [
     "🛡️ Verifying security rules..."
 ];
 
+// Scroll to bottom of chat
+function scrollToBottom() {
+    chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
+}
+
 // Textarea auto-resize and Enter key handling
 input.addEventListener('input', function() {
     this.style.height = 'auto';
@@ -390,6 +427,8 @@ form.addEventListener('submit', async (e) => {
     appendUserMessage(query);
     input.value = '';
     
+    // Move loading state into the chat messages container so it appears inline
+    chatMessages.appendChild(loadingState);
     loadingState.classList.remove('hidden');
     btn.disabled = true;
     
@@ -400,6 +439,7 @@ form.addEventListener('submit', async (e) => {
         stage = (stage + 1) % loadingStages.length;
         loaderText.textContent = loadingStages[stage];
     }, 2500);
+    scrollToBottom();
 
     try {
         const response = await fetch(`${API_BASE_URL}/incident/analyze`, {
@@ -433,6 +473,14 @@ async function handleStream(response) {
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
     let accumulatedAnswer = "";
+    let userHasScrolledUp = false;
+
+    // Track if user scrolled up during generation
+    const onUserScroll = () => {
+        const distFromBottom = chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight;
+        userHasScrolledUp = distFromBottom > 80;
+    };
+    chatMessages.addEventListener('scroll', onUserScroll, { passive: true });
 
     const ui = createAIResponseCard();
     ui.answerText.classList.add('typing-cursor');
@@ -465,7 +513,9 @@ async function handleStream(response) {
                         
                         accumulatedAnswer += event.content;
                         ui.answerText.innerHTML = marked.parse(accumulatedAnswer);
-                        chatMessages.scrollTo({ top: chatMessages.scrollHeight, behavior: 'smooth' });
+                        if (!userHasScrolledUp) {
+                            scrollToBottom();
+                        }
                     } 
                     else if (event.type === 'final_result') {
                         ui.answerText.classList.remove('typing-cursor');
@@ -488,6 +538,7 @@ async function handleStream(response) {
     loadingState.classList.add('hidden');
     btn.disabled = false;
     ui.answerText.classList.remove('typing-cursor');
+    chatMessages.removeEventListener('scroll', onUserScroll);
 }
 
 function renderResult(data, streamedAnswer, ui) {
