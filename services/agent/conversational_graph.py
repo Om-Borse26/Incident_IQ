@@ -370,13 +370,14 @@ INSTRUCTIONS:
     updated_history = list(state.get("chat_history", []))
     updated_history.append({"role": "user", "content": state["query"]})
     updated_history.append({
-        "role": "assistant", 
+        "role": "assistant",
         "content": answer,
         "mode": "followup",
-        "confidence": state.get("confidence", 0.9),
-        "reasoning": state.get("reasoning", ""),
-        "sources": state.get("sources", []),
-        "suggested_fixes": state.get("suggested_fixes", []),
+        "followup_type": "followup_conv",
+        "confidence": 0.0,   # Not meaningful for a conversational reply
+        "reasoning": "",     # No new reasoning — this is a rephrasing, not a new analysis
+        "sources": [],       # Sources belong to the PREVIOUS answer, not this one
+        "suggested_fixes": [],  # Same — don't carry old fixes forward
         "status": "completed"
     })
     updated_history = updated_history[-12:]
@@ -384,11 +385,12 @@ INSTRUCTIONS:
     return {
         "answer": answer,
         "mode": "followup",
-        "confidence": state.get("confidence", 0.9),
-        "reasoning": state.get("reasoning", ""),
-        "suggested_fixes": state.get("suggested_fixes", []),
-        "sources": state.get("sources", []),
-        "diagnostics_available": state.get("diagnostics_available", False),
+        "followup_type": "followup_conv",
+        "confidence": 0.0,
+        "reasoning": "",
+        "suggested_fixes": [],
+        "sources": [],
+        "diagnostics_available": False,
         "needs_postmortem": False,
         "chat_history": updated_history,
     }
@@ -675,6 +677,8 @@ TONE INSTRUCTIONS:
         "role": "assistant", 
         "content": answer,
         "mode": state.get("mode", "unknown"),
+        "followup_type": state.get("followup_type", "new_query"),
+        "query_type": state.get("query_type", "historical"),
         "confidence": state.get("confidence", 1.0),
         "reasoning": state.get("reasoning", "No reasoning traces available."),
         "sources": hist_sources,
@@ -688,6 +692,8 @@ TONE INSTRUCTIONS:
     return {
         "answer": answer,
         "chat_history": updated_history,
+        "followup_type": state.get("followup_type", "new_query"),
+        "query_type": state.get("query_type", "historical"),
         "reasoning": state.get("reasoning", "No reasoning traces available."),
         "suggested_fixes": state.get("suggested_fixes", []),
         "sources": state.get("sources", [])

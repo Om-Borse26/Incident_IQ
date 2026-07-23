@@ -37,17 +37,32 @@ if (typeof marked !== 'undefined') {
 }
 
 function copyCodeBlock(btn) {
-    // Decode HTML entities for data-code attribute
-    const raw = btn.getAttribute('data-code');
-    const decoded = raw.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-    navigator.clipboard.writeText(decoded).then(() => {
-        btn.textContent = 'Copied!';
-        btn.style.color = 'var(--success)';
-        setTimeout(() => {
-            btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
-            btn.style.color = '';
-        }, 2000);
-    }).catch(console.error);
+    // data-rawcode is used by the live-logs panel (no entity escaping needed)
+    // data-code is used by the markdown code blocks (HTML entities must be decoded)
+    const rawCode = btn.getAttribute('data-rawcode');
+    if (rawCode) {
+        // Already unescaped — just write it directly
+        navigator.clipboard.writeText(rawCode.replace(/&quot;/g, '"')).then(() => {
+            btn.textContent = 'Copied!';
+            btn.style.color = 'var(--success)';
+            setTimeout(() => {
+                btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Logs`;
+                btn.style.color = '';
+            }, 2000);
+        }).catch(console.error);
+    } else {
+        // Decode HTML entities from data-code attribute
+        const raw = btn.getAttribute('data-code') || '';
+        const decoded = raw.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        navigator.clipboard.writeText(decoded).then(() => {
+            btn.textContent = 'Copied!';
+            btn.style.color = 'var(--success)';
+            setTimeout(() => {
+                btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+                btn.style.color = '';
+            }, 2000);
+        }).catch(console.error);
+    }
 }
 
 // Global Keyboard Shortcuts
@@ -602,17 +617,38 @@ async function handleStream(response) {
 
 function renderResult(data, streamedAnswer, ui) {
     // ---------------------------------------------------------------
-    // 1. Determine display mode
+    // DECISION MATRIX — which node produced this answer?
+    //
+    //  followup_type="followup_conv" → pure conversational reply (no new RAG)
+    //    → show ONLY answer text. No meta, no sections.
+    //
+    //  query_type="chitchat"          → off-topic / greeting
+    //    → show ONLY answer text. No meta, no sections.
+    //
+    //  query_type="live"              → live incident diagnosis
+    //    → show meta + all sections + live logs window
+    //
+    //  followup_type="followup_rag"   → new RAG search triggered by follow-up
+    //    → show meta + all sections (+ live logs if query_type=live)
+    //
+    //  everything else (new_query historical / followup_rag historical)
+    //    → show meta + all sections, no live logs
     // ---------------------------------------------------------------
-    const mode = data.mode || 'unknown';
-    const queryType = data.query_type || 'historical';
-    const isChitchat = mode === 'chitchat';
-    const isFollowup = mode === 'followup';
-    const isLive     = queryType === 'live';
-    const hasLiveLogs = isLive && (data.live_logs || (data.service_health && Object.keys(data.service_health).length > 0));
+    const mode        = data.mode        || 'unknown';
+    const queryType   = data.query_type  || 'historical';
+    const followupType = data.followup_type || 'new_query';
+
+    // Two cases where we show ONLY the bare answer — no chrome at all
+    const isAnswerOnly = (followupType === 'followup_conv') || (queryType === 'chitchat');
+
+    const isLive      = (queryType === 'live');
+    const hasLiveLogs = isLive && (
+        (data.live_logs && data.live_logs.trim()) ||
+        (data.service_health && Object.keys(data.service_health).length > 0)
+    );
 
     // ---------------------------------------------------------------
-    // 2. Postmortem banner
+    // Postmortem banner (always shown when present)
     // ---------------------------------------------------------------
     if (data.generated_postmortem_path && !data.generated_postmortem_path.startsWith('Error')) {
         const filename = data.generated_postmortem_path.split(/[/\\]/).pop();
@@ -623,51 +659,57 @@ function renderResult(data, streamedAnswer, ui) {
     }
 
     // ---------------------------------------------------------------
-    // 3. Meta panel (confidence + status)
+    // Meta panel (confidence + status)
     // ---------------------------------------------------------------
-    const confPerc = Math.round((data.confidence || 0) * 100);
-    ui.confFill.style.width = `${confPerc}%`;
-    ui.confVal.textContent = `${confPerc}%`;
-
-    const statusText = (data.status || 'COMPLETED').replace('_', ' ').toUpperCase();
-    ui.statusTag.textContent = statusText;
-    if (data.status === 'pending_approval' || data.needs_postmortem) {
-        ui.statusTag.style.background = 'rgba(245, 158, 11, 0.2)';
-        ui.statusTag.style.color = 'var(--warning)';
+    const metaPanel = ui.container.querySelector('.meta-panel');
+    if (isAnswerOnly) {
+        if (metaPanel) metaPanel.style.display = 'none';
     } else {
-        ui.statusTag.style.background = 'rgba(16, 185, 129, 0.2)';
-        ui.statusTag.style.color = 'var(--success)';
+        if (metaPanel) metaPanel.style.display = '';
+        const confPerc = Math.round((data.confidence || 0) * 100);
+        ui.confFill.style.width = `${confPerc}%`;
+        ui.confVal.textContent = `${confPerc}%`;
+        const statusText = (data.status || 'COMPLETED').replace('_', ' ').toUpperCase();
+        ui.statusTag.textContent = statusText;
+        if (data.status === 'pending_approval' || data.needs_postmortem) {
+            ui.statusTag.style.background = 'rgba(245, 158, 11, 0.2)';
+            ui.statusTag.style.color = 'var(--warning)';
+        } else {
+            ui.statusTag.style.background = 'rgba(16, 185, 129, 0.2)';
+            ui.statusTag.style.color = 'var(--success)';
+        }
     }
 
     // ---------------------------------------------------------------
-    // 4. Rename the answer card title based on mode
+    // Answer card title
     // ---------------------------------------------------------------
     const answerCard = ui.container.querySelector('.answer-card');
     const answerCardTitle = answerCard ? answerCard.querySelector('h3') : null;
     if (answerCardTitle) {
-        if (isChitchat) answerCardTitle.textContent = 'IncidentIQ Response';
-        else if (isFollowup) answerCardTitle.textContent = 'Follow-Up Analysis';
-        else if (isLive) answerCardTitle.textContent = 'Live Incident Analysis';
-        else answerCardTitle.textContent = 'Root Cause Analysis';
+        if (followupType === 'followup_conv') answerCardTitle.textContent = 'Clarification';
+        else if (queryType === 'chitchat')    answerCardTitle.textContent = 'IncidentIQ Response';
+        else if (isLive)                      answerCardTitle.textContent = 'Live Incident Analysis';
+        else if (followupType === 'followup_rag') answerCardTitle.textContent = 'Follow-Up Analysis';
+        else                                  answerCardTitle.textContent = 'Root Cause Analysis';
     }
 
     // ---------------------------------------------------------------
-    // 5. Render the main answer text (streamed or from data)
+    // Main answer text
     // ---------------------------------------------------------------
     const finalAnswerText = streamedAnswer || data.answer || 'No specific answer provided.';
     ui.answerText.innerHTML = marked.parse(finalAnswerText);
-    // Apply syntax highlighting to any hljs code blocks
+    // Only highlight code blocks NOT already processed by our custom renderer
     if (typeof hljs !== 'undefined') {
-        ui.answerText.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+        ui.answerText.querySelectorAll('pre:not(.code-block-pre) > code').forEach(el => hljs.highlightElement(el));
     }
 
     // ---------------------------------------------------------------
-    // 6. Live Logs window (only for live incidents)
+    // Live Logs panel — only for live incidents
     // ---------------------------------------------------------------
     const existingLogsWindow = ui.container.querySelector('.live-logs-window');
     if (existingLogsWindow) existingLogsWindow.remove();
 
-    if (hasLiveLogs) {
+    if (!isAnswerOnly && hasLiveLogs) {
         const logsWindow = document.createElement('div');
         logsWindow.className = 'live-logs-window';
 
@@ -684,18 +726,17 @@ function renderResult(data, streamedAnswer, ui) {
             logsContent += JSON.stringify(data.recent_deploys, null, 2);
         }
 
-        const escapedLogs = logsContent.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const escapedLogs = logsContent.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         logsWindow.innerHTML = `
             <div class="code-block-header">
                 <span class="code-block-lang">📋 LIVE DIAGNOSTICS</span>
-                <button class="code-copy-btn" onclick="copyCodeBlock(this)" data-code="${escapedLogs}">
+                <button class="code-copy-btn" onclick="copyCodeBlock(this)" data-rawcode="${logsContent.replace(/"/g, '&quot;')}">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     Copy Logs
                 </button>
             </div>
-            <pre class="code-block-pre" style="max-height:320px;"><code class="hljs language-json">${escapedLogs}</code></pre>
+            <pre class="code-block-pre" style="max-height:320px;"><code>${escapedLogs}</code></pre>
         `;
-        // Insert after the answer card
         const contentState = ui.container.querySelector('.content-state');
         if (contentState) {
             answerCard ? answerCard.insertAdjacentElement('afterend', logsWindow) : contentState.appendChild(logsWindow);
@@ -703,26 +744,27 @@ function renderResult(data, streamedAnswer, ui) {
     }
 
     // ---------------------------------------------------------------
-    // 7. Reasoning section
+    // Reasoning, Fixes, Sources, grid-2 — HIDDEN for answer-only modes
     // ---------------------------------------------------------------
     const reasoningCard = ui.container.querySelector('.reasoning-card');
-    if (isChitchat) {
-        // Hide for chitchat
-        if (reasoningCard) reasoningCard.style.display = 'none';
-    } else {
-        if (reasoningCard) reasoningCard.style.display = '';
-        ui.reasoningText.textContent = data.reasoning || 'No reasoning traces available.';
-    }
+    const fixesCard     = ui.container.querySelector('.fixes-card');
+    const sourcesCard   = ui.container.querySelector('.sources-card');
+    const grid2         = ui.container.querySelector('.grid-2');
 
-    // ---------------------------------------------------------------
-    // 8. Suggested Fixes section
-    // ---------------------------------------------------------------
-    const fixesCard = ui.container.querySelector('.fixes-card');
-    const hasFixes = data.suggested_fixes && data.suggested_fixes.length > 0;
-    if (isChitchat) {
-        if (fixesCard) fixesCard.style.display = 'none';
+    if (isAnswerOnly) {
+        if (reasoningCard) reasoningCard.style.display = 'none';
+        if (fixesCard)     fixesCard.style.display     = 'none';
+        if (sourcesCard)   sourcesCard.style.display   = 'none';
+        if (grid2)         grid2.style.display         = 'none';
     } else {
-        if (fixesCard) fixesCard.style.display = '';
+        // --- Reasoning ---
+        const hasReasoning = data.reasoning && data.reasoning.trim();
+        if (reasoningCard) reasoningCard.style.display = hasReasoning ? '' : 'none';
+        if (hasReasoning) ui.reasoningText.textContent = data.reasoning;
+
+        // --- Suggested Fixes ---
+        const hasFixes = data.suggested_fixes && data.suggested_fixes.length > 0;
+        if (fixesCard) fixesCard.style.display = '';  // Always show for non-answer-only
         ui.fixesList.innerHTML = '';
         if (hasFixes) {
             data.suggested_fixes.forEach(fix => {
@@ -731,39 +773,30 @@ function renderResult(data, streamedAnswer, ui) {
                 ui.fixesList.appendChild(li);
             });
         } else {
-            ui.fixesList.innerHTML = '<li>None identified</li>';
+            ui.fixesList.innerHTML = '<li style="opacity:0.5;">None identified</li>';
         }
-    }
 
-    // ---------------------------------------------------------------
-    // 9. Data Sources section
-    // ---------------------------------------------------------------
-    const sourcesCard = ui.container.querySelector('.sources-card');
-    const hasSources = data.sources && data.sources.length > 0;
-    // Hide for chitchat and conversational followups with no sources
-    if (isChitchat || (isFollowup && !hasSources)) {
-        if (sourcesCard) sourcesCard.style.display = 'none';
-    } else {
-        if (sourcesCard) sourcesCard.style.display = '';
+        // --- Sources ---
+        const hasSources = data.sources && data.sources.length > 0;
+        if (sourcesCard) sourcesCard.style.display = '';  // Always show for non-answer-only
         ui.sourcesTags.innerHTML = '';
         if (hasSources) {
             data.sources.forEach(src => {
                 const a = document.createElement('a');
                 a.className = 'source-tag';
-                a.textContent = src;
                 let filename = src;
                 if (filename.includes('\\')) filename = filename.split('\\').pop();
                 if (filename.includes('/')) filename = filename.split('/').pop();
                 const match = src.match(/\(([^)]+\.(?:md|txt|docx|pdf))\)$/i) || src.match(/^([^ ]+\.(?:md|txt|docx|pdf))$/i);
                 if (match && match[1]) filename = match[1];
                 else if (!src.includes('.')) filename = null;
+                a.textContent = filename || src;
                 if (filename) {
                     a.href = `${API_BASE_URL}/document/${filename}`;
                     a.download = filename;
                     a.target = '_blank';
                     a.title = 'Click to download raw postmortem';
-                    a.style.textDecoration = 'none';
-                    a.style.cursor = 'pointer';
+                    a.style.cssText = 'text-decoration:none;cursor:pointer;';
                 } else {
                     a.style.cursor = 'default';
                 }
@@ -773,24 +806,20 @@ function renderResult(data, streamedAnswer, ui) {
             const span = document.createElement('span');
             span.className = 'tag source-tag';
             span.textContent = 'No sources used';
-            span.style.opacity = '0.5';
-            span.style.cursor = 'default';
+            span.style.cssText = 'opacity:0.5;cursor:default;';
             ui.sourcesTags.appendChild(span);
+        }
+
+        // --- grid-2 visibility: hide only if BOTH reasoning AND fixes are hidden ---
+        if (grid2) {
+            const rHidden = reasoningCard && reasoningCard.style.display === 'none';
+            const fHidden = fixesCard && fixesCard.style.display === 'none';
+            grid2.style.display = (rHidden && fHidden) ? 'none' : '';
         }
     }
 
     // ---------------------------------------------------------------
-    // 10. Ensure grid-2 visibility based on section visibility
-    // ---------------------------------------------------------------
-    const grid2 = ui.container.querySelector('.grid-2');
-    if (grid2) {
-        const reasoningHidden = reasoningCard && reasoningCard.style.display === 'none';
-        const fixesHidden = fixesCard && fixesCard.style.display === 'none';
-        grid2.style.display = (reasoningHidden && fixesHidden) ? 'none' : '';
-    }
-
-    // ---------------------------------------------------------------
-    // 11. Human approval box
+    // Human approval box
     // ---------------------------------------------------------------
     if (data.status === 'pending_approval') {
         ui.approvalBox.classList.remove('hidden');

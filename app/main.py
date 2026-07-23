@@ -417,6 +417,7 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                 final_payload = {
                     "mode": current_state_values.get("mode", "unknown"),
                     "query_type": current_state_values.get("query_type", "historical"),
+                    "followup_type": current_state_values.get("followup_type", "new_query"),
                     "confidence": current_state_values.get("confidence", 0.0),
                     "answer": answer,
                     "sources": current_state_values.get("sources", []),
