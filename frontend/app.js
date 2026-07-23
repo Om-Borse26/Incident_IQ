@@ -313,10 +313,14 @@ async function loadThread(threadId) {
                 if (msg.role === 'user') {
                     appendUserMessage(msg.content);
                 } else {
-                    // For historical AI messages, we just render the raw markdown for simplicity
-                    // since the full structured UI JSON state might not be fully retrievable from just string history.
-                    // But in a real app, we'd persist the JSON response too.
-                    appendSimpleAIMessage(msg.content);
+                    // Render rich historical messages if they have mode/reasoning
+                    if (msg.mode || msg.reasoning) {
+                        const ui = createAIResponseCard();
+                        ui.answerText.classList.remove('typing-cursor');
+                        renderResult(msg, msg.content, ui);
+                    } else {
+                        appendSimpleAIMessage(msg.content);
+                    }
                 }
             });
         } else {
@@ -576,8 +580,8 @@ function renderResult(data, streamedAnswer, ui) {
     ui.confFill.style.width = `${confPerc}%`;
     ui.confVal.textContent = `${confPerc}%`;
     
-    ui.statusTag.textContent = (data.status || 'unknown').replace('_', ' ').toUpperCase();
-    if (data.status === 'pending_approval') {
+    ui.statusTag.textContent = (data.status || 'COMPLETED').replace('_', ' ').toUpperCase();
+    if (data.status === 'pending_approval' || data.needs_postmortem) {
         ui.statusTag.style.background = 'rgba(245, 158, 11, 0.2)';
         ui.statusTag.style.color = 'var(--warning)';
     } else {

@@ -285,7 +285,7 @@ USER MOOD: {state.get('user_mood', 'neutral')}
 INSTRUCTIONS:
 - Adapt your tone to match the user's mood (e.g. joke back if they are joking, be formal if they are stressed).
 - Use rich markdown formatting and emojis to make your response engaging and visually appealing.
-- GUARDRAIL: You are an SRE assistant. If the user asks you to write generic code (e.g., a python script), do research, write essays, or perform tasks unrelated to system diagnostics and incident resolution, you MUST politely refuse. Example: "I'm IncidentIQ, your AI reliability engineer. I can only assist with system diagnostics, postmortems, and incident resolution. I can't write generic code for you!"
+- STRICT GUARDRAIL: You are an SRE assistant. You MUST politely refuse to answer ANY questions that are not directly related to SRE, DevOps, architecture incident resolution, or system diagnostics. This includes refusing to write generic code, refusing to create or review Mermaid diagrams/flowcharts, refusing to write essays, and refusing general knowledge queries. Example refusal: "I'm IncidentIQ, your AI reliability engineer. I can only assist with system diagnostics, postmortems, and incident resolution. I cannot help with that request!"
 
 CONVERSATION HISTORY:
 {history_text}
@@ -304,7 +304,15 @@ User Query: {state['query']}
     # Append to chat history and truncate to last 12 messages (6 turns)
     updated_history = list(state.get("chat_history", []))
     updated_history.append({"role": "user", "content": state["query"]})
-    updated_history.append({"role": "assistant", "content": answer})
+    updated_history.append({
+        "role": "assistant", 
+        "content": answer,
+        "mode": "known",
+        "confidence": 1.0,
+        "reasoning": "Answered using general knowledge.",
+        "sources": [],
+        "suggested_fixes": []
+    })
     updated_history = updated_history[-12:]
 
     return {
@@ -360,7 +368,15 @@ INSTRUCTIONS:
     # Append to chat history and truncate
     updated_history = list(state.get("chat_history", []))
     updated_history.append({"role": "user", "content": state["query"]})
-    updated_history.append({"role": "assistant", "content": answer})
+    updated_history.append({
+        "role": "assistant", 
+        "content": answer,
+        "mode": "unknown",
+        "confidence": 1.0,
+        "reasoning": "The query could not be answered using the incident knowledge base.",
+        "sources": [],
+        "suggested_fixes": []
+    })
     updated_history = updated_history[-12:]
 
     return {
@@ -647,7 +663,15 @@ TONE INSTRUCTIONS:
     # Append this turn to chat history and truncate
     updated_history = list(state.get("chat_history", []))
     updated_history.append({"role": "user", "content": state["query"]})
-    updated_history.append({"role": "assistant", "content": answer})
+    updated_history.append({
+        "role": "assistant", 
+        "content": answer,
+        "mode": state.get("mode", "unknown"),
+        "confidence": state.get("confidence", 1.0),
+        "reasoning": state.get("reasoning", ""),
+        "sources": [s.model_dump() if hasattr(s, "model_dump") else s for s in state.get("sources", [])],
+        "suggested_fixes": state.get("suggested_fixes", [])
+    })
     updated_history = updated_history[-12:]
 
     return {
