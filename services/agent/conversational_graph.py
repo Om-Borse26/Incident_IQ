@@ -311,7 +311,8 @@ User Query: {state['query']}
         "confidence": 1.0,
         "reasoning": "Answered using general knowledge.",
         "sources": [],
-        "suggested_fixes": []
+        "suggested_fixes": [],
+        "status": "completed"
     })
     updated_history = updated_history[-12:]
 
@@ -375,7 +376,8 @@ INSTRUCTIONS:
         "confidence": 1.0,
         "reasoning": "The query could not be answered using the incident knowledge base.",
         "sources": [],
-        "suggested_fixes": []
+        "suggested_fixes": [],
+        "status": "completed"
     })
     updated_history = updated_history[-12:]
 
@@ -670,7 +672,10 @@ TONE INSTRUCTIONS:
         "confidence": state.get("confidence", 1.0),
         "reasoning": state.get("reasoning", ""),
         "sources": [s.model_dump() if hasattr(s, "model_dump") else s for s in state.get("sources", [])],
-        "suggested_fixes": state.get("suggested_fixes", [])
+        "suggested_fixes": state.get("suggested_fixes", []),
+        "status": "completed",
+        "needs_postmortem": state.get("needs_postmortem", False),
+        "generated_postmortem_path": state.get("generated_postmortem_path", "")
     })
     updated_history = updated_history[-12:]
 
