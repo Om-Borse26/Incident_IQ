@@ -184,6 +184,7 @@ async function loadSidebarHistory() {
                 const titleSpan = document.createElement('span');
                 titleSpan.textContent = t.title;
                 titleSpan.style.flex = "1";
+                titleSpan.style.minWidth = "0";
                 titleSpan.style.overflow = "hidden";
                 titleSpan.style.textOverflow = "ellipsis";
                 titleSpan.style.whiteSpace = "nowrap";

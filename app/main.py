@@ -293,7 +293,7 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
     session_id = body.session_id or str(uuid.uuid4())
     
     # Save the thread context to the user's history
-    title = body.query[:30] + "..." if len(body.query) > 30 else body.query
+    title = body.query[:120] + "..." if len(body.query) > 120 else body.query
     save_thread(user_id, session_id, title)
     
     config = {
