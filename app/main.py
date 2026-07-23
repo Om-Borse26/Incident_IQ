@@ -365,22 +365,22 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                     async with asyncio.timeout(55.0):
                         async for event in stream:
                             event_name = event.get("event")
-                        node_name = event.get("name", "")
-                        
-                        if event_name == "on_chat_model_stream":
-                            metadata_node = event.get("metadata", {}).get("langgraph_node", "")
-                            if metadata_node in ["generate_answer_node", "chitchat_node", "conversational_response_node"]:
-                                chunk = event.get("data", {}).get("chunk")
-                                if chunk and chunk.content:
-                                    yield f'data: {json.dumps({"type": "token", "content": chunk.content})}\n\n'
-                                    
-                        elif event_name == "on_chain_start":
-                            if node_name in status_map:
-                                msg = status_map[node_name]
-                                yield f'data: {json.dumps({"type": "status", "message": msg})}\n\n'
-                            if node_name == "__interrupt__":
-                                logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
-                                run_status = "pending_approval"
+                            node_name = event.get("name", "")
+                            
+                            if event_name == "on_chat_model_stream":
+                                metadata_node = event.get("metadata", {}).get("langgraph_node", "")
+                                if metadata_node in ["generate_answer_node", "chitchat_node", "conversational_response_node"]:
+                                    chunk = event.get("data", {}).get("chunk")
+                                    if chunk and chunk.content:
+                                        yield f'data: {json.dumps({"type": "token", "content": chunk.content})}\n\n'
+                                        
+                            elif event_name == "on_chain_start":
+                                if node_name in status_map:
+                                    msg = status_map[node_name]
+                                    yield f'data: {json.dumps({"type": "status", "message": msg})}\n\n'
+                                if node_name == "__interrupt__":
+                                    logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
+                                    run_status = "pending_approval"
 
                 except asyncio.TimeoutError:
                     logger.error(f"[analyze] Timeout for session {session_id}")
