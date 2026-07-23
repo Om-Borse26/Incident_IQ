@@ -362,8 +362,9 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
 
                 try:
                     # To add a global timeout to the stream iteration:
-                    async for event in stream:
-                        event_name = event.get("event")
+                    async with asyncio.timeout(55.0):
+                        async for event in stream:
+                            event_name = event.get("event")
                         node_name = event.get("name", "")
                         
                         if event_name == "on_chat_model_stream":

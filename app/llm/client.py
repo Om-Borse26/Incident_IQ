@@ -95,8 +95,8 @@ def _ask_groq(prompt: str, system: str | None) -> str:
         messages.append(SystemMessage(content=system))
     messages.append(HumanMessage(content=prompt))
 
-    max_retries = 6
-    backoff = 10  # initial wait on 429; doubles each retry, capped at 120s
+    max_retries = 2
+    backoff = 2  # initial wait on 429; doubles each retry, capped at 120s
 
     for attempt in range(max_retries):
         try:
@@ -245,7 +245,7 @@ def get_chat_model(temperature: float = 0.3):
             models.append(ChatGroq(
                 model=settings.GROQ_MODEL,
                 api_key=settings.GROQ_API_KEY,
-                max_retries=3,
+                max_retries=1,
                 temperature=temperature,
             ))
         elif provider_name == "gemini" and settings.GEMINI_API_KEY:

@@ -308,6 +308,8 @@ User Query: {state['query']}
         "role": "assistant", 
         "content": answer,
         "mode": "chitchat",
+        "query_type": "chitchat",
+        "followup_type": "new_query",
         "confidence": 1.0,
         "reasoning": "",
         "sources": [],
@@ -319,6 +321,8 @@ User Query: {state['query']}
     return {
         "answer": answer,
         "mode": "chitchat",
+        "query_type": "chitchat",
+        "followup_type": "new_query",
         "confidence": 1.0,
         "reasoning": "",
         "suggested_fixes": [],

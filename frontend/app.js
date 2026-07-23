@@ -597,7 +597,11 @@ async function handleStream(response) {
                     } 
                     else if (event.type === 'error') {
                         ui.answerText.classList.remove('typing-cursor');
-                        throw new Error(event.message);
+                        ui.answerText.innerHTML = `<span style="color:var(--red);">Error: ${event.message}</span>`;
+                        clearInterval(loadingInterval);
+                        loadingState.classList.add('hidden');
+                        btn.disabled = false;
+                        return;
                     }
                 } catch (e) {
                     if (e.message !== "Unexpected end of JSON input") {
