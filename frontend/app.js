@@ -3,15 +3,51 @@ const API_BASE_URL = (window.location.hostname === 'localhost' || window.locatio
     ? 'http://localhost:8080' 
     : 'https://65-0-174-137.sslip.io';
 
-// Configure Marked to use Highlight.js
-if (typeof marked !== 'undefined' && typeof hljs !== 'undefined') {
-    marked.setOptions({
-        highlight: function (code, lang) {
-            const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-            return hljs.highlight(code, { language }).value;
-        },
-        langPrefix: 'hljs language-'
-    });
+// ===========================================================
+// CHATGPT-STYLE MARKED RENDERER
+// ===========================================================
+if (typeof marked !== 'undefined') {
+    const renderer = new marked.Renderer();
+    
+    renderer.code = function(code, language) {
+        // Support both old (string) and new (object) marked API
+        const codeStr = (typeof code === 'object' && code !== null) ? (code.text || '') : (code || '');
+        const lang = (typeof code === 'object' && code !== null) ? (code.lang || language || 'plaintext') : (language || 'plaintext');
+        const langLabel = lang || 'plaintext';
+        let highlighted = codeStr;
+        if (typeof hljs !== 'undefined') {
+            const validLang = hljs.getLanguage(langLabel) ? langLabel : 'plaintext';
+            highlighted = hljs.highlight(codeStr, { language: validLang }).value;
+        }
+        // Escape for data-code attribute
+        const escapedCode = codeStr.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div class="code-block-wrapper">
+            <div class="code-block-header">
+                <span class="code-block-lang">${langLabel.toUpperCase()}</span>
+                <button class="code-copy-btn" onclick="copyCodeBlock(this)" data-code="${escapedCode}">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Copy
+                </button>
+            </div>
+            <pre class="code-block-pre"><code class="hljs language-${langLabel}">${highlighted}</code></pre>
+        </div>`;
+    };
+
+    marked.use({ renderer });
+}
+
+function copyCodeBlock(btn) {
+    // Decode HTML entities for data-code attribute
+    const raw = btn.getAttribute('data-code');
+    const decoded = raw.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    navigator.clipboard.writeText(decoded).then(() => {
+        btn.textContent = 'Copied!';
+        btn.style.color = 'var(--success)';
+        setTimeout(() => {
+            btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy`;
+            btn.style.color = '';
+        }, 2000);
+    }).catch(console.error);
 }
 
 // Global Keyboard Shortcuts
@@ -182,7 +218,7 @@ async function loadSidebarHistory() {
                 const li = document.createElement('li');
                 
                 const titleSpan = document.createElement('span');
-                titleSpan.textContent = t.first_query || "New Incident";
+                titleSpan.textContent = t.title || "New Incident";
                 titleSpan.style.whiteSpace = "nowrap";
                 titleSpan.style.overflow = "hidden";
                 titleSpan.style.textOverflow = "ellipsis";
@@ -399,6 +435,7 @@ function createAIResponseCard() {
 
     return {
         container: div,
+        contentEl: div.querySelector('.message-content'),
         answerText: answerText,
         confFill: div.querySelector('.confidence-fill'),
         confVal: div.querySelector('.confidence-val'),
@@ -564,24 +601,36 @@ async function handleStream(response) {
 }
 
 function renderResult(data, streamedAnswer, ui) {
+    // ---------------------------------------------------------------
+    // 1. Determine display mode
+    // ---------------------------------------------------------------
+    const mode = data.mode || 'unknown';
+    const queryType = data.query_type || 'historical';
+    const isChitchat = mode === 'chitchat';
+    const isFollowup = mode === 'followup';
+    const isLive     = queryType === 'live';
+    const hasLiveLogs = isLive && (data.live_logs || (data.service_health && Object.keys(data.service_health).length > 0));
+
+    // ---------------------------------------------------------------
+    // 2. Postmortem banner
+    // ---------------------------------------------------------------
     if (data.generated_postmortem_path && !data.generated_postmortem_path.startsWith('Error')) {
         const filename = data.generated_postmortem_path.split(/[/\\]/).pop();
         const banner = document.createElement('div');
-        banner.style.background = 'rgba(16, 185, 129, 0.1)';
-        banner.style.color = 'var(--success)';
-        banner.style.padding = '1rem';
-        banner.style.borderRadius = '8px';
-        banner.style.marginBottom = '1.5rem';
-        banner.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        banner.style.cssText = 'background:rgba(16,185,129,.1);color:var(--success);padding:1rem;border-radius:8px;margin-bottom:1.5rem;border:1px solid rgba(16,185,129,.3);';
         banner.innerHTML = `<strong>Success:</strong> Postmortem <code>${filename}</code> automatically generated and ingested into the Knowledge Base!`;
         ui.container.querySelector('.message-content').insertBefore(banner, ui.container.querySelector('.content-state'));
     }
 
+    // ---------------------------------------------------------------
+    // 3. Meta panel (confidence + status)
+    // ---------------------------------------------------------------
     const confPerc = Math.round((data.confidence || 0) * 100);
     ui.confFill.style.width = `${confPerc}%`;
     ui.confVal.textContent = `${confPerc}%`;
-    
-    ui.statusTag.textContent = (data.status || 'COMPLETED').replace('_', ' ').toUpperCase();
+
+    const statusText = (data.status || 'COMPLETED').replace('_', ' ').toUpperCase();
+    ui.statusTag.textContent = statusText;
     if (data.status === 'pending_approval' || data.needs_postmortem) {
         ui.statusTag.style.background = 'rgba(245, 158, 11, 0.2)';
         ui.statusTag.style.color = 'var(--warning)';
@@ -590,64 +639,159 @@ function renderResult(data, streamedAnswer, ui) {
         ui.statusTag.style.color = 'var(--success)';
     }
 
-    const finalAnswerText = streamedAnswer || data.answer || "No specific answer provided.";
+    // ---------------------------------------------------------------
+    // 4. Rename the answer card title based on mode
+    // ---------------------------------------------------------------
+    const answerCard = ui.container.querySelector('.answer-card');
+    const answerCardTitle = answerCard ? answerCard.querySelector('h3') : null;
+    if (answerCardTitle) {
+        if (isChitchat) answerCardTitle.textContent = 'IncidentIQ Response';
+        else if (isFollowup) answerCardTitle.textContent = 'Follow-Up Analysis';
+        else if (isLive) answerCardTitle.textContent = 'Live Incident Analysis';
+        else answerCardTitle.textContent = 'Root Cause Analysis';
+    }
+
+    // ---------------------------------------------------------------
+    // 5. Render the main answer text (streamed or from data)
+    // ---------------------------------------------------------------
+    const finalAnswerText = streamedAnswer || data.answer || 'No specific answer provided.';
     ui.answerText.innerHTML = marked.parse(finalAnswerText);
-    ui.reasoningText.textContent = data.reasoning || "No reasoning traces available.";
-
-    ui.fixesList.innerHTML = '';
-    if (data.suggested_fixes && data.suggested_fixes.length > 0) {
-        data.suggested_fixes.forEach(fix => {
-            const li = document.createElement('li');
-            li.innerHTML = marked.parseInline(fix);
-            ui.fixesList.appendChild(li);
-        });
-    } else {
-        ui.fixesList.innerHTML = '<li>None identified</li>';
+    // Apply syntax highlighting to any hljs code blocks
+    if (typeof hljs !== 'undefined') {
+        ui.answerText.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
     }
 
-    ui.sourcesTags.innerHTML = '';
-    if (data.sources && data.sources.length > 0) {
-        data.sources.forEach(src => {
-            const a = document.createElement('a');
-            a.className = 'source-tag';
-            a.textContent = src;
-            let filename = src;
-            if (filename.includes('\\')) filename = filename.split('\\').pop();
-            if (filename.includes('/')) filename = filename.split('/').pop();
-            
-            const match = src.match(/\(([^)]+\.(?:md|txt|docx|pdf))\)$/i) || src.match(/^([^ ]+\.(?:md|txt|docx|pdf))$/i);
-            if (match && match[1]) filename = match[1];
-            else if (!src.includes('.')) filename = null;
+    // ---------------------------------------------------------------
+    // 6. Live Logs window (only for live incidents)
+    // ---------------------------------------------------------------
+    const existingLogsWindow = ui.container.querySelector('.live-logs-window');
+    if (existingLogsWindow) existingLogsWindow.remove();
 
-            if (filename) {
-                a.href = `${API_BASE_URL}/document/${filename}`;
-                a.download = filename;
-                a.target = '_blank';
-                a.title = 'Click to download raw postmortem';
-                a.style.textDecoration = 'none';
-                a.style.cursor = 'pointer';
-            } else {
-                a.style.cursor = 'default';
-            }
-            ui.sourcesTags.appendChild(a);
-        });
-    } else {
-        const span = document.createElement('span');
-        span.className = 'tag source-tag';
-        span.textContent = 'No sources used';
-        span.style.opacity = '0.5';
-        span.style.cursor = 'default';
-        ui.sourcesTags.appendChild(span);
+    if (hasLiveLogs) {
+        const logsWindow = document.createElement('div');
+        logsWindow.className = 'live-logs-window';
+
+        let logsContent = '';
+        if (data.service_health && Object.keys(data.service_health).length > 0) {
+            logsContent += JSON.stringify(data.service_health, null, 2);
+        }
+        if (data.live_logs && data.live_logs.trim()) {
+            if (logsContent) logsContent += '\n\n';
+            logsContent += data.live_logs.trim();
+        }
+        if (data.recent_deploys && data.recent_deploys.length > 0) {
+            if (logsContent) logsContent += '\n\n=== Recent Deployments ===\n';
+            logsContent += JSON.stringify(data.recent_deploys, null, 2);
+        }
+
+        const escapedLogs = logsContent.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        logsWindow.innerHTML = `
+            <div class="code-block-header">
+                <span class="code-block-lang">📋 LIVE DIAGNOSTICS</span>
+                <button class="code-copy-btn" onclick="copyCodeBlock(this)" data-code="${escapedLogs}">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Copy Logs
+                </button>
+            </div>
+            <pre class="code-block-pre" style="max-height:320px;"><code class="hljs language-json">${escapedLogs}</code></pre>
+        `;
+        // Insert after the answer card
+        const contentState = ui.container.querySelector('.content-state');
+        if (contentState) {
+            answerCard ? answerCard.insertAdjacentElement('afterend', logsWindow) : contentState.appendChild(logsWindow);
+        }
     }
-    
-    // Conditionally hide empty sections for chitchat
-    if (data.mode === 'chitchat' || data.mode === 'known' || (!data.reasoning && (!data.suggested_fixes || data.suggested_fixes.length === 0))) {
-        const grid2 = ui.container.querySelector('.grid-2');
-        const sourcesCard = ui.container.querySelector('.sources-card');
-        if (grid2) grid2.style.display = 'none';
+
+    // ---------------------------------------------------------------
+    // 7. Reasoning section
+    // ---------------------------------------------------------------
+    const reasoningCard = ui.container.querySelector('.reasoning-card');
+    if (isChitchat) {
+        // Hide for chitchat
+        if (reasoningCard) reasoningCard.style.display = 'none';
+    } else {
+        if (reasoningCard) reasoningCard.style.display = '';
+        ui.reasoningText.textContent = data.reasoning || 'No reasoning traces available.';
+    }
+
+    // ---------------------------------------------------------------
+    // 8. Suggested Fixes section
+    // ---------------------------------------------------------------
+    const fixesCard = ui.container.querySelector('.fixes-card');
+    const hasFixes = data.suggested_fixes && data.suggested_fixes.length > 0;
+    if (isChitchat) {
+        if (fixesCard) fixesCard.style.display = 'none';
+    } else {
+        if (fixesCard) fixesCard.style.display = '';
+        ui.fixesList.innerHTML = '';
+        if (hasFixes) {
+            data.suggested_fixes.forEach(fix => {
+                const li = document.createElement('li');
+                li.innerHTML = marked.parseInline(fix);
+                ui.fixesList.appendChild(li);
+            });
+        } else {
+            ui.fixesList.innerHTML = '<li>None identified</li>';
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // 9. Data Sources section
+    // ---------------------------------------------------------------
+    const sourcesCard = ui.container.querySelector('.sources-card');
+    const hasSources = data.sources && data.sources.length > 0;
+    // Hide for chitchat and conversational followups with no sources
+    if (isChitchat || (isFollowup && !hasSources)) {
         if (sourcesCard) sourcesCard.style.display = 'none';
+    } else {
+        if (sourcesCard) sourcesCard.style.display = '';
+        ui.sourcesTags.innerHTML = '';
+        if (hasSources) {
+            data.sources.forEach(src => {
+                const a = document.createElement('a');
+                a.className = 'source-tag';
+                a.textContent = src;
+                let filename = src;
+                if (filename.includes('\\')) filename = filename.split('\\').pop();
+                if (filename.includes('/')) filename = filename.split('/').pop();
+                const match = src.match(/\(([^)]+\.(?:md|txt|docx|pdf))\)$/i) || src.match(/^([^ ]+\.(?:md|txt|docx|pdf))$/i);
+                if (match && match[1]) filename = match[1];
+                else if (!src.includes('.')) filename = null;
+                if (filename) {
+                    a.href = `${API_BASE_URL}/document/${filename}`;
+                    a.download = filename;
+                    a.target = '_blank';
+                    a.title = 'Click to download raw postmortem';
+                    a.style.textDecoration = 'none';
+                    a.style.cursor = 'pointer';
+                } else {
+                    a.style.cursor = 'default';
+                }
+                ui.sourcesTags.appendChild(a);
+            });
+        } else {
+            const span = document.createElement('span');
+            span.className = 'tag source-tag';
+            span.textContent = 'No sources used';
+            span.style.opacity = '0.5';
+            span.style.cursor = 'default';
+            ui.sourcesTags.appendChild(span);
+        }
     }
 
+    // ---------------------------------------------------------------
+    // 10. Ensure grid-2 visibility based on section visibility
+    // ---------------------------------------------------------------
+    const grid2 = ui.container.querySelector('.grid-2');
+    if (grid2) {
+        const reasoningHidden = reasoningCard && reasoningCard.style.display === 'none';
+        const fixesHidden = fixesCard && fixesCard.style.display === 'none';
+        grid2.style.display = (reasoningHidden && fixesHidden) ? 'none' : '';
+    }
+
+    // ---------------------------------------------------------------
+    // 11. Human approval box
+    // ---------------------------------------------------------------
     if (data.status === 'pending_approval') {
         ui.approvalBox.classList.remove('hidden');
         ui.approveBtn.onclick = () => resumeGraph('approve', ui);

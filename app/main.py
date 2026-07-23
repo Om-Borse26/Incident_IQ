@@ -416,12 +416,16 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
 
                 final_payload = {
                     "mode": current_state_values.get("mode", "unknown"),
+                    "query_type": current_state_values.get("query_type", "historical"),
                     "confidence": current_state_values.get("confidence", 0.0),
                     "answer": answer,
                     "sources": current_state_values.get("sources", []),
                     "reasoning": current_state_values.get("reasoning", ""),
                     "suggested_fixes": current_state_values.get("suggested_fixes", []),
                     "diagnostics_available": current_state_values.get("diagnostics_available", False),
+                    "live_logs": current_state_values.get("live_logs", ""),
+                    "service_health": current_state_values.get("service_health", {}),
+                    "recent_deploys": current_state_values.get("recent_deploys", []),
                     "degraded": False,
                     "session_id": session_id,
                     "status": run_status,

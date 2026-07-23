@@ -1065,3 +1065,99 @@ body {
     color: var(--text-muted);
     line-height: 1.45;
 }
+
+/* ===========================================================
+   CHATGPT-STYLE CODE BLOCKS
+   =========================================================== */
+.code-block-wrapper {
+    border-radius: 10px;
+    overflow: hidden;
+    background: #1a1e2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    margin: 1rem 0;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+}
+
+.code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.55rem 1rem;
+    background: rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.code-block-lang {
+    font-size: 0.73rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    font-family: inherit;
+}
+
+.code-copy-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: none;
+    color: rgba(255,255,255,0.4);
+    font-size: 0.75rem;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 5px;
+    transition: background 0.15s, color 0.15s;
+}
+
+.code-copy-btn:hover {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.85);
+}
+
+.code-block-pre {
+    margin: 0;
+    padding: 1.1rem 1.25rem;
+    overflow-x: auto;
+    background: transparent;
+    font-size: 0.82rem;
+    line-height: 1.65;
+}
+
+.code-block-pre code {
+    background: transparent;
+    padding: 0;
+    border: none;
+    font-family: inherit;
+    font-size: inherit;
+}
+
+/* Live Logs / Diagnostics Window */
+.live-logs-window {
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(15, 22, 40, 0.92);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    margin: 1.25rem 0;
+    font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.live-logs-window .code-block-header {
+    background: rgba(59, 130, 246, 0.08);
+    border-bottom-color: rgba(59, 130, 246, 0.2);
+}
+
+.live-logs-window .code-block-lang {
+    color: var(--primary);
+    opacity: 1;
+}
+
+.live-logs-window .code-block-pre {
+    max-height: 320px;
+    overflow-y: auto;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.12) transparent;
+}

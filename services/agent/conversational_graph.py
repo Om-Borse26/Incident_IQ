@@ -307,9 +307,9 @@ User Query: {state['query']}
     updated_history.append({
         "role": "assistant", 
         "content": answer,
-        "mode": "known",
+        "mode": "chitchat",
         "confidence": 1.0,
-        "reasoning": "Answered using general knowledge.",
+        "reasoning": "",
         "sources": [],
         "suggested_fixes": [],
         "status": "completed"
@@ -318,9 +318,9 @@ User Query: {state['query']}
 
     return {
         "answer": answer,
-        "mode": "known",
+        "mode": "chitchat",
         "confidence": 1.0,
-        "reasoning": "Answered using general knowledge.",
+        "reasoning": "",
         "suggested_fixes": [],
         "sources": [],
         "diagnostics_available": False,
@@ -372,20 +372,20 @@ INSTRUCTIONS:
     updated_history.append({
         "role": "assistant", 
         "content": answer,
-        "mode": "unknown",
-        "confidence": 1.0,
-        "reasoning": "The query could not be answered using the incident knowledge base.",
-        "sources": [],
-        "suggested_fixes": [],
+        "mode": "followup",
+        "confidence": state.get("confidence", 0.9),
+        "reasoning": state.get("reasoning", ""),
+        "sources": state.get("sources", []),
+        "suggested_fixes": state.get("suggested_fixes", []),
         "status": "completed"
     })
     updated_history = updated_history[-12:]
 
     return {
         "answer": answer,
-        "mode": state.get("mode", "known"),
+        "mode": "followup",
         "confidence": state.get("confidence", 0.9),
-        "reasoning": "Answered from conversation context (no new retrieval).",
+        "reasoning": state.get("reasoning", ""),
         "suggested_fixes": state.get("suggested_fixes", []),
         "sources": state.get("sources", []),
         "diagnostics_available": state.get("diagnostics_available", False),
