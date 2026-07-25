@@ -74,11 +74,13 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// State
 let currentSessionId = crypto.randomUUID();
 let loadingInterval = null;
 let token = localStorage.getItem('incidentiq_token');
 let username = localStorage.getItem('incidentiq_user') || 'User';
+
+// Map of sessionId -> 'pending' | 'done' | 'error'
+const activeSessions = new Map();
 
 // Auth DOM
 const loginModal = document.getElementById('login-modal');
@@ -233,7 +235,8 @@ async function loadSidebarHistory() {
                 const li = document.createElement('li');
                 
                 const titleSpan = document.createElement('span');
-                titleSpan.textContent = t.title || "New Incident";
+                const isPending = activeSessions.get(t.thread_id) === 'pending';
+                titleSpan.textContent = isPending ? "⚙️ Generating..." : (t.title || "New Incident");
                 titleSpan.style.whiteSpace = "nowrap";
                 titleSpan.style.overflow = "hidden";
                 titleSpan.style.textOverflow = "ellipsis";
@@ -353,6 +356,35 @@ async function loadThread(threadId) {
     chatMessages.innerHTML = '';
     loadingState.classList.remove('hidden');
     
+    // 1. If we know it's currently generating in the background, reconnect to it
+    if (activeSessions.get(threadId) === 'pending') {
+        try {
+            const res = await fetch(`${API_BASE_URL}/incident/session/${threadId}/result`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.headers.get('content-type')?.includes('text/event-stream')) {
+                // It's still running, reconnect stream
+                chatMessages.appendChild(loadingState);
+                await handleStream(res);
+                return;
+            } else {
+                const data = await res.json();
+                if (data.status === 'done') {
+                    loadingState.classList.add('hidden');
+                    const ui = createAIResponseCard();
+                    ui.answerText.classList.remove('typing-cursor');
+                    renderResult(data.data, data.data.answer, ui);
+                    activeSessions.set(threadId, 'done');
+                    loadSidebarHistory();
+                    return;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to reconnect to pending session", e);
+        }
+    }
+    
+    // 2. Otherwise load historical completed messages
     try {
         const res = await fetch(`${API_BASE_URL}/incident/history/${threadId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -501,6 +533,10 @@ form.addEventListener('submit', async (e) => {
     appendUserMessage(query);
     input.value = '';
     
+    // Mark as pending and update sidebar immediately
+    activeSessions.set(currentSessionId, 'pending');
+    loadSidebarHistory();
+    
     // Move loading state into the chat messages container so it appears inline
     chatMessages.appendChild(loadingState);
     loadingState.classList.remove('hidden');
@@ -594,6 +630,8 @@ async function handleStream(response) {
                     else if (event.type === 'final_result') {
                         ui.answerText.classList.remove('typing-cursor');
                         renderResult(event.data, accumulatedAnswer, ui);
+                        activeSessions.set(currentSessionId, 'done');
+                        loadSidebarHistory();
                     } 
                     else if (event.type === 'error') {
                         ui.answerText.classList.remove('typing-cursor');
@@ -601,6 +639,8 @@ async function handleStream(response) {
                         clearInterval(loadingInterval);
                         loadingState.classList.add('hidden');
                         btn.disabled = false;
+                        activeSessions.set(currentSessionId, 'error');
+                        loadSidebarHistory();
                         return;
                     }
                 } catch (e) {

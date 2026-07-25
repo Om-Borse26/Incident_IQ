@@ -80,6 +80,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("[startup] SQS setup failed: %s. Ingestion will use BackgroundTasks fallback.", e)
 
+    from cachetools import TTLCache
+    app.state.session_queues = TTLCache(maxsize=500, ttl=3600)
+    app.state.session_results = TTLCache(maxsize=500, ttl=3600)
+
     yield
 
     # Graceful shutdown: signal the worker thread to stop
@@ -203,9 +207,10 @@ async def health_check():
     return {"status": "ok", "service": "incidentiq"}
 
 @app.get("/incident/history")
-def get_history(user_id: int = Depends(verify_token)):
+async def get_history(user_id: int = Depends(verify_token)):
     """Fetch all chat threads for the current user."""
-    return get_user_threads(user_id)
+    import asyncio
+    return await asyncio.to_thread(get_user_threads, user_id)
 
 @app.get("/incident/history/{thread_id}")
 async def get_thread_history(thread_id: str, user_id: int = Depends(verify_token)):
@@ -318,8 +323,14 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
 
     from fastapi.responses import StreamingResponse
     import json
+    import asyncio
+    
+    # Initialize queue for this session
+    if session_id not in request.app.state.session_queues:
+        request.app.state.session_queues[session_id] = asyncio.Queue()
+    queue = request.app.state.session_queues[session_id]
 
-    async def stream_graph_execution():
+    async def run_graph_in_background():
         try:
             import os
             from app.config import settings
@@ -330,7 +341,7 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
 
                 if body.resume_action:
                     logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
-                    yield f'data: {json.dumps({"type": "status", "message": "Resuming execution..."})}\n\n'
+                    await queue.put({"type": "status", "message": "Resuming execution..."})
                     stream = conversational_graph.astream_events(Command(resume={"action": body.resume_action}), config, version="v2")
                 else:
                     existing_state = None
@@ -361,7 +372,6 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                 }
 
                 try:
-                    # To add a global timeout to the stream iteration:
                     async with asyncio.timeout(55.0):
                         async for event in stream:
                             event_name = event.get("event")
@@ -372,12 +382,12 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                                 if metadata_node in ["generate_answer_node", "chitchat_node", "conversational_response_node"]:
                                     chunk = event.get("data", {}).get("chunk")
                                     if chunk and chunk.content:
-                                        yield f'data: {json.dumps({"type": "token", "content": chunk.content})}\n\n'
+                                        await queue.put({"type": "token", "content": chunk.content})
                                         
                             elif event_name == "on_chain_start":
                                 if node_name in status_map:
                                     msg = status_map[node_name]
-                                    yield f'data: {json.dumps({"type": "status", "message": msg})}\n\n'
+                                    await queue.put({"type": "status", "message": msg})
                                 if node_name == "__interrupt__":
                                     logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
                                     run_status = "pending_approval"
@@ -391,7 +401,9 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                         "suggested_fixes": [], "diagnostics_available": False,
                         "degraded": True, "session_id": session_id, "status": "error"
                     }
-                    yield f'data: {json.dumps({"type": "final_result", "data": error_payload})}\n\n'
+                    await queue.put({"type": "final_result", "data": error_payload})
+                    request.app.state.session_results[session_id] = error_payload
+                    await queue.put(None)
                     return
 
                 # Fetch final state from memory checkpointer
@@ -434,13 +446,69 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                     "generated_postmortem_path": generated_path
                 }
 
-                yield f'data: {json.dumps({"type": "final_result", "data": final_payload})}\n\n'
+                request.app.state.session_results[session_id] = final_payload
+                await queue.put({"type": "final_result", "data": final_payload})
+                await queue.put(None) # Signal end of stream
                 
         except Exception as exc:
             logger.exception("[incident/analyze] Graph execution failed")
-            yield f'data: {json.dumps({"type": "error", "message": str(exc)})}\n\n'
+            await queue.put({"type": "error", "message": str(exc)})
+            await queue.put(None)
 
-    return StreamingResponse(stream_graph_execution(), media_type="text/event-stream")
+    # Launch graph processing in background so it survives HTTP disconnections
+    asyncio.create_task(run_graph_in_background())
+
+    async def event_generator():
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield f'data: {json.dumps(event)}\n\n'
+        except asyncio.CancelledError:
+            # Client disconnected early. The background task keeps running.
+            logger.info(f"[analyze] Client disconnected from session {session_id}. Task continuing.")
+            raise
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/incident/session/{session_id}/result")
+async def get_session_result(session_id: str, request: Request, user_id: int = Depends(verify_token)):
+    """
+    Retrieve the result of an async graph execution.
+    If the result is ready, returns JSON immediately.
+    If it's still generating, connects to the existing SSE queue.
+    """
+    import json
+    from fastapi.responses import StreamingResponse
+    import asyncio
+    
+    # 1. Is it already done?
+    if session_id in request.app.state.session_results:
+        return {"status": "done", "data": request.app.state.session_results[session_id]}
+        
+    # 2. Is it currently running?
+    if session_id in request.app.state.session_queues:
+        queue = request.app.state.session_queues[session_id]
+        
+        async def event_generator():
+            try:
+                # Send a reconnect heartbeat
+                yield f'data: {json.dumps({"type": "status", "message": "Reconnected to running session..."})}\n\n'
+                while True:
+                    event = await queue.get()
+                    if event is None:
+                        break
+                    yield f'data: {json.dumps(event)}\n\n'
+            except asyncio.CancelledError:
+                logger.info(f"[session/result] Client disconnected again from session {session_id}")
+                raise
+                
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+        
+    # 3. Not found
+    raise HTTPException(status_code=404, detail="Session not found or expired")
 
 
 
