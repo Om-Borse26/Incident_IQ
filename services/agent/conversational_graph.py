@@ -504,20 +504,29 @@ async def retrieve_node(state: ConversationalState) -> dict:
 
     import asyncio
 
-    # 1. Vector Search
+    # 1. Vector Search — hard 15-second timeout so it can never hang the graph
     try:
-        vector_res = await asyncio.to_thread(search_incidents, query_to_search, 4)
+        vector_res = await asyncio.wait_for(
+            asyncio.to_thread(search_incidents, query_to_search, 4),
+            timeout=15.0
+        )
         v_list = [
             {"title": r.incident_title, "text": r.text[:1500] + ("..." if len(r.text) > 1500 else ""), "source": r.source}
             for r in vector_res
         ]
+    except asyncio.TimeoutError:
+        logger.error("[retrieve_node] Vector search timed out after 15s — returning empty results")
+        v_list = []
     except Exception as e:
         logger.error(f"[retrieve_node] Vector search failed: {e}")
         v_list = [{"error": str(e)}]
 
-    # 2. Tree Search
+    # 2. Tree Search — hard 20-second timeout (it makes an internal LLM call which can stall)
     try:
-        tree_res = await asyncio.to_thread(tree_search, query_to_search)
+        tree_res = await asyncio.wait_for(
+            asyncio.to_thread(tree_search, query_to_search),
+            timeout=20.0
+        )
         t_list = [
             {
                 "title": r.incident_title,
@@ -527,7 +536,11 @@ async def retrieve_node(state: ConversationalState) -> dict:
             }
             for r in tree_res
         ]
+    except asyncio.TimeoutError:
+        logger.error("[retrieve_node] Tree search timed out after 20s — returning empty results")
+        t_list = []
     except Exception as e:
+        logger.error(f"[retrieve_node] Tree search failed: {e}")
         t_list = [{"error": str(e)}]
 
     return {"retrieved_incidents": v_list, "vectorless_results": t_list}
