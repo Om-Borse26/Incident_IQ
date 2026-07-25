@@ -95,8 +95,12 @@ def _ask_groq(prompt: str, system: str | None) -> str:
         messages.append(SystemMessage(content=system))
     messages.append(HumanMessage(content=prompt))
 
+    # IMPORTANT: max_retries must be LOW and sleep must be CAPPED.
+    # This function runs inside asyncio.to_thread() — a sleeping thread cannot
+    # be cancelled by asyncio.wait_for(). A long time.sleep() here will freeze
+    # the entire async event loop task until the thread finishes.
     max_retries = 2
-    backoff = 2  # initial wait on 429; doubles each retry, capped at 120s
+    backoff = 2  # seconds — hard cap applied below
 
     for attempt in range(max_retries):
         try:
@@ -107,20 +111,30 @@ def _ask_groq(prompt: str, system: str | None) -> str:
             if not _is_retryable(exc) or attempt == max_retries - 1:
                 raise LLMError(f"Groq error: {exc}") from exc
 
-            # Parse "Please try again in 2m11.328s" from the Groq error body
-            wait = backoff
+            # Parse "Please try again in 2m11.328s" from the Groq error body.
+            # We intentionally IGNORE the suggested wait and cap at 5 seconds.
+            # Sleeping longer blocks the thread and cannot be cancelled by asyncio.
+            wait = min(backoff, 5)  # HARD CAP: never sleep more than 5s in a thread
             m = re.search(r"try again in (?:(\d+)m)?(\d+(?:\.\d+)?)s", str(exc))
             if m:
                 mins = int(m.group(1) or 0)
                 secs = float(m.group(2) or 0)
-                wait = max(int(mins * 60 + secs) + 2, wait)
+                suggested = int(mins * 60 + secs) + 1
+                # If Groq asks us to wait >5s, give up immediately on this provider
+                if suggested > 5:
+                    logger.warning(
+                        "[groq] Rate-limit suggested wait=%ds exceeds 5s cap — failing fast to fallback",
+                        suggested,
+                    )
+                    raise LLMError(f"Groq rate-limit: suggested wait {suggested}s exceeds threshold") from exc
+                wait = suggested
 
             logger.warning(
                 "[groq] Rate-limit on attempt %d/%d — waiting %ds before retry",
                 attempt + 1, max_retries, wait,
             )
             time.sleep(wait)
-            backoff = min(backoff * 2, 120)
+            backoff = min(backoff * 2, 5)  # cap at 5s
 
 
 def _ask_gemini(prompt: str, system: str | None) -> str:
@@ -222,6 +236,22 @@ def ask_llm(prompt: str, system: str | None = None) -> str:
         f"Order tried: {order}. "
         f"Errors: {errors}"
     )
+
+
+async def ask_llm_async(prompt: str, system: str | None = None) -> str:
+    """
+    Async-safe version of ask_llm for use inside async nodes.
+    Runs ask_llm in a thread with a hard 15-second timeout so a
+    blocking LLM call can never freeze the async event loop.
+    """
+    import asyncio
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(ask_llm, prompt, system),
+            timeout=15.0
+        )
+    except asyncio.TimeoutError:
+        raise LLMAllProvidersFailed("ask_llm_async: LLM call timed out after 15 seconds")
 
 
 def get_chat_model(temperature: float = 0.3):

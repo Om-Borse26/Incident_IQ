@@ -92,6 +92,11 @@ def tree_search(query: str) -> list[TreeSearchResult]:
     2. Asks the LLM to reason over the Table of Contents and pick relevant nodes.
     3. Handles malformed JSON output gracefully.
     4. Returns the FULL text of the selected nodes.
+
+    NOTE: This is a synchronous function but is always called via asyncio.to_thread()
+    in retrieve_node, which applies a hard timeout via asyncio.wait_for().
+    The internal ask_llm() call will fail fast if Groq suggests waiting > 5 seconds
+    (due to the cap added in client.py), immediately triggering the Gemini fallback.
     """
     nodes = _get_tree_index()
     if not nodes:
@@ -119,6 +124,8 @@ def tree_search(query: str) -> list[TreeSearchResult]:
     )
 
     try:
+        # ask_llm() now caps Groq backoff at 5s and fails fast to Gemini fallback
+        # if Groq suggests a longer wait. This prevents blocking the calling thread.
         response_text = ask_llm(prompt=query, system=system_prompt)
         
         # Strip potential markdown backticks just in case the LLM ignores instructions
@@ -138,7 +145,6 @@ def tree_search(query: str) -> list[TreeSearchResult]:
         
     except json.JSONDecodeError as exc:
         logger.error(f"[tree_search] Malformed JSON from LLM: {exc}. Response was: {response_text}")
-        # Degrade gracefully by returning an empty list (or we could try a fallback regex here)
         return []
     except Exception as exc:
         logger.error(f"[tree_search] LLM routing failed: {exc}")

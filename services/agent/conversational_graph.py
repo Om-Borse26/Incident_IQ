@@ -494,55 +494,76 @@ async def diagnose_node(state: ConversationalState) -> dict:
 
 
 async def retrieve_node(state: ConversationalState) -> dict:
-    """Call both Vector and Vectorless RAG to retrieve historical context."""
+    """
+    Call both Vector and Vectorless RAG to retrieve historical context.
+
+    IMPORTANT: Both searches run in TRUE PARALLEL via asyncio.gather().
+    This ensures that if one hangs or fails, the other still returns its
+    results immediately. Vector search never waits for tree search to finish.
+    """
     logger.info("[graph] retrieve_node executing...")
     from services.retrieval.search import search_incidents
     from services.retrieval.tree_search import tree_search
 
     query_to_search = state.get("rewritten_query") or state["query"]
-    logger.info("[graph] Searching with query: '%s'", query_to_search)
+    logger.info("[graph] Searching (parallel) with query: '%s'", query_to_search)
 
     import asyncio
 
-    # 1. Vector Search — hard 15-second timeout so it can never hang the graph
-    try:
-        vector_res = await asyncio.wait_for(
-            asyncio.to_thread(search_incidents, query_to_search, 4),
-            timeout=15.0
-        )
-        v_list = [
-            {"title": r.incident_title, "text": r.text[:1500] + ("..." if len(r.text) > 1500 else ""), "source": r.source}
-            for r in vector_res
-        ]
-    except asyncio.TimeoutError:
-        logger.error("[retrieve_node] Vector search timed out after 15s — returning empty results")
-        v_list = []
-    except Exception as e:
-        logger.error(f"[retrieve_node] Vector search failed: {e}")
-        v_list = [{"error": str(e)}]
+    async def _do_vector_search():
+        """Runs ChromaDB vector search with a hard timeout."""
+        try:
+            results = await asyncio.wait_for(
+                asyncio.to_thread(search_incidents, query_to_search, 4),
+                timeout=12.0
+            )
+            return [
+                {"title": r.incident_title, "text": r.text[:1500] + ("..." if len(r.text) > 1500 else ""), "source": r.source}
+                for r in results
+            ]
+        except asyncio.TimeoutError:
+            logger.error("[retrieve_node] Vector search timed out after 12s")
+            return []
+        except Exception as e:
+            logger.error(f"[retrieve_node] Vector search failed: {e}")
+            return []
 
-    # 2. Tree Search — hard 20-second timeout (it makes an internal LLM call which can stall)
-    try:
-        tree_res = await asyncio.wait_for(
-            asyncio.to_thread(tree_search, query_to_search),
-            timeout=20.0
-        )
-        t_list = [
-            {
-                "title": r.incident_title,
-                "section": r.section_heading,
-                "text": r.section_text[:1500] + ("..." if len(r.section_text) > 1500 else ""),
-                "source": r.source_file,
-            }
-            for r in tree_res
-        ]
-    except asyncio.TimeoutError:
-        logger.error("[retrieve_node] Tree search timed out after 20s — returning empty results")
-        t_list = []
-    except Exception as e:
-        logger.error(f"[retrieve_node] Tree search failed: {e}")
-        t_list = [{"error": str(e)}]
+    async def _do_tree_search():
+        """Runs LLM-based tree search with a hard timeout.
+        tree_search() calls ask_llm() internally (synchronous + potentially slow).
+        The 18s timeout ensures it never blocks the node permanently.
+        """
+        try:
+            results = await asyncio.wait_for(
+                asyncio.to_thread(tree_search, query_to_search),
+                timeout=18.0
+            )
+            return [
+                {
+                    "title": r.incident_title,
+                    "section": r.section_heading,
+                    "text": r.section_text[:1500] + ("..." if len(r.section_text) > 1500 else ""),
+                    "source": r.source_file,
+                }
+                for r in results
+            ]
+        except asyncio.TimeoutError:
+            logger.error("[retrieve_node] Tree search timed out after 18s — using vector results only")
+            return []
+        except Exception as e:
+            logger.error(f"[retrieve_node] Tree search failed: {e}")
+            return []
 
+    # Run BOTH searches in parallel — neither blocks the other
+    v_list, t_list = await asyncio.gather(
+        _do_vector_search(),
+        _do_tree_search(),
+    )
+
+    logger.info(
+        "[retrieve_node] Done. vector=%d results, tree=%d results",
+        len(v_list), len(t_list)
+    )
     return {"retrieved_incidents": v_list, "vectorless_results": t_list}
 
 
