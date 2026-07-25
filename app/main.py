@@ -324,15 +324,27 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
     from fastapi.responses import StreamingResponse
     import json
     import asyncio
+    import os
     
-    # Initialize queue for this session
-    if session_id not in request.app.state.session_queues:
+    redis_client = None
+    redis_url = os.environ.get("REDIS_URL")
+    if redis_url:
+        import redis.asyncio as redis
+        redis_client = redis.from_url(redis_url)
+    
+    # In-memory queue fallback if Redis isn't configured
+    if not redis_client and session_id not in request.app.state.session_queues:
         request.app.state.session_queues[session_id] = asyncio.Queue()
-    queue = request.app.state.session_queues[session_id]
+    queue = request.app.state.session_queues.get(session_id)
+
+    async def emit_event(event_dict):
+        if redis_client:
+            await redis_client.publish(f"session:{session_id}", json.dumps(event_dict))
+        else:
+            await queue.put(event_dict)
 
     async def run_graph_in_background():
         try:
-            import os
             from app.config import settings
             db_path = os.path.join(settings.DATA_DIR, "checkpoints.sqlite")
             
@@ -341,7 +353,7 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
 
                 if body.resume_action:
                     logger.info(f"[analyze] Resuming session {session_id} with action: {body.resume_action}")
-                    await queue.put({"type": "status", "message": "Resuming execution..."})
+                    await emit_event({"type": "status", "message": "Resuming execution..."})
                     stream = conversational_graph.astream_events(Command(resume={"action": body.resume_action}), config, version="v2")
                 else:
                     existing_state = None
@@ -382,12 +394,12 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                                 if metadata_node in ["generate_answer_node", "chitchat_node", "conversational_response_node"]:
                                     chunk = event.get("data", {}).get("chunk")
                                     if chunk and chunk.content:
-                                        await queue.put({"type": "token", "content": chunk.content})
+                                        await emit_event({"type": "token", "content": chunk.content})
                                         
                             elif event_name == "on_chain_start":
                                 if node_name in status_map:
                                     msg = status_map[node_name]
-                                    await queue.put({"type": "status", "message": msg})
+                                    await emit_event({"type": "status", "message": msg})
                                 if node_name == "__interrupt__":
                                     logger.info(f"[analyze] Graph INTERRUPTED for session {session_id}")
                                     run_status = "pending_approval"
@@ -401,9 +413,10 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                         "suggested_fixes": [], "diagnostics_available": False,
                         "degraded": True, "session_id": session_id, "status": "error"
                     }
-                    await queue.put({"type": "final_result", "data": error_payload})
+                    await emit_event({"type": "final_result", "data": error_payload})
                     request.app.state.session_results[session_id] = error_payload
-                    await queue.put(None)
+                    await emit_event({"type": "end"})
+                    if redis_client: await redis_client.aclose()
                     return
 
                 # Fetch final state from memory checkpointer
@@ -418,7 +431,6 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                 if generated_path and not generated_path.startswith("Error:"):
                     try:
                         from services.retrieval.ingest import ingest_single_document
-                        import os
                         filename = os.path.basename(generated_path)
                         with open(generated_path, "r", encoding="utf-8") as f:
                             content = f.read()
@@ -447,28 +459,45 @@ async def incident_analyze(request: Request, response: Response, body: AnalyzeRe
                 }
 
                 request.app.state.session_results[session_id] = final_payload
-                await queue.put({"type": "final_result", "data": final_payload})
-                await queue.put(None) # Signal end of stream
+                await emit_event({"type": "final_result", "data": final_payload})
+                await emit_event({"type": "end"}) # Signal end of stream
+                if redis_client: await redis_client.aclose()
                 
         except Exception as exc:
             logger.exception("[incident/analyze] Graph execution failed")
-            await queue.put({"type": "error", "message": str(exc)})
-            await queue.put(None)
+            await emit_event({"type": "error", "message": str(exc)})
+            await emit_event({"type": "end"})
+            if redis_client: await redis_client.aclose()
 
     # Launch graph processing in background so it survives HTTP disconnections
     asyncio.create_task(run_graph_in_background())
 
     async def event_generator():
+        redis_sub = None
         try:
-            while True:
-                event = await queue.get()
-                if event is None:
-                    break
-                yield f'data: {json.dumps(event)}\n\n'
+            if redis_client:
+                redis_sub = redis_client.pubsub()
+                await redis_sub.subscribe(f"session:{session_id}")
+                while True:
+                    message = await redis_sub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                    if message:
+                        event_dict = json.loads(message["data"])
+                        if event_dict.get("type") == "end":
+                            break
+                        yield f'data: {message["data"].decode("utf-8")}\n\n'
+            else:
+                while True:
+                    event = await queue.get()
+                    if event.get("type") == "end":
+                        break
+                    yield f'data: {json.dumps(event)}\n\n'
         except asyncio.CancelledError:
-            # Client disconnected early. The background task keeps running.
             logger.info(f"[analyze] Client disconnected from session {session_id}. Task continuing.")
             raise
+        finally:
+            if redis_sub:
+                await redis_sub.unsubscribe()
+                await redis_sub.close()
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
@@ -478,9 +507,10 @@ async def get_session_result(session_id: str, request: Request, user_id: int = D
     """
     Retrieve the result of an async graph execution.
     If the result is ready, returns JSON immediately.
-    If it's still generating, connects to the existing SSE queue.
+    If it's still generating, connects to the existing SSE queue or Redis PubSub.
     """
     import json
+    import os
     from fastapi.responses import StreamingResponse
     import asyncio
     
@@ -488,26 +518,57 @@ async def get_session_result(session_id: str, request: Request, user_id: int = D
     if session_id in request.app.state.session_results:
         return {"status": "done", "data": request.app.state.session_results[session_id]}
         
-    # 2. Is it currently running?
+    redis_url = os.environ.get("REDIS_URL")
+    
+    # 2. Redis pub/sub flow
+    if redis_url:
+        import redis.asyncio as redis
+        redis_client = redis.from_url(redis_url)
+        
+        async def redis_event_generator():
+            redis_sub = None
+            try:
+                redis_sub = redis_client.pubsub()
+                await redis_sub.subscribe(f"session:{session_id}")
+                yield f'data: {json.dumps({"type": "status", "message": "Reconnected to running session via Redis..."})}\n\n'
+                
+                while True:
+                    message = await redis_sub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+                    if message:
+                        event_dict = json.loads(message["data"])
+                        if event_dict.get("type") == "end":
+                            break
+                        yield f'data: {message["data"].decode("utf-8")}\n\n'
+            except asyncio.CancelledError:
+                logger.info(f"[session/result] Client disconnected again from session {session_id}")
+                raise
+            finally:
+                if redis_sub:
+                    await redis_sub.unsubscribe()
+                    await redis_sub.close()
+                await redis_client.aclose()
+                
+        return StreamingResponse(redis_event_generator(), media_type="text/event-stream")
+
+    # 3. Local memory queue flow
     if session_id in request.app.state.session_queues:
         queue = request.app.state.session_queues[session_id]
         
-        async def event_generator():
+        async def queue_event_generator():
             try:
-                # Send a reconnect heartbeat
-                yield f'data: {json.dumps({"type": "status", "message": "Reconnected to running session..."})}\n\n'
+                yield f'data: {json.dumps({"type": "status", "message": "Reconnected to running session in-memory..."})}\n\n'
                 while True:
                     event = await queue.get()
-                    if event is None:
+                    if event.get("type") == "end":
                         break
                     yield f'data: {json.dumps(event)}\n\n'
             except asyncio.CancelledError:
                 logger.info(f"[session/result] Client disconnected again from session {session_id}")
                 raise
                 
-        return StreamingResponse(event_generator(), media_type="text/event-stream")
+        return StreamingResponse(queue_event_generator(), media_type="text/event-stream")
         
-    # 3. Not found
+    # 4. Not found
     raise HTTPException(status_code=404, detail="Session not found or expired")
 
 
